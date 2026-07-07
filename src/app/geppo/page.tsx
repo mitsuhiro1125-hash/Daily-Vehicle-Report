@@ -24,6 +24,45 @@ type EditForm = {
   note: string;
 };
 
+type DayGroup = {
+  date: string;
+  logs: VehicleLogDTO[];
+  // 同日に複数件ある場合にまとめた表示用の値
+  mergedDestinations: string[];
+  mergedEndMeter: number;
+  mergedFuelLocation: string | null;
+  mergedFuelAmount: number | null;
+  mergedNote: string | null;
+  latestCreatedAt: string;
+};
+
+function mergeDayLogs(date: string, logs: VehicleLogDTO[]): DayGroup {
+  const mergedDestinations = logs.flatMap((log) => splitDestinations(log.destination));
+  const mergedEndMeter = Math.max(...logs.map((log) => log.endMeter));
+  const fuelLocations = logs.map((log) => log.fuelLocation).filter((v): v is string => !!v);
+  const mergedFuelLocation = fuelLocations.length > 0 ? fuelLocations.join("、") : null;
+  const fuelAmounts = logs
+    .map((log) => log.fuelAmount)
+    .filter((v): v is number => v !== null && v !== undefined);
+  const mergedFuelAmount = fuelAmounts.length > 0 ? fuelAmounts.reduce((a, b) => a + b, 0) : null;
+  const notes = logs.map((log) => log.note).filter((v): v is string => !!v);
+  const mergedNote = notes.length > 0 ? notes.join(" ／ ") : null;
+  const latestCreatedAt = logs
+    .map((log) => log.createdAt)
+    .sort((a, b) => (a > b ? -1 : 1))[0];
+
+  return {
+    date,
+    logs,
+    mergedDestinations,
+    mergedEndMeter,
+    mergedFuelLocation,
+    mergedFuelAmount,
+    mergedNote,
+    latestCreatedAt,
+  };
+}
+
 export default function GeppoPage() {
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [logs, setLogs] = useState<VehicleLogDTO[]>([]);
@@ -38,6 +77,11 @@ export default function GeppoPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<VehicleLogDTO | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [breakdownGroup, setBreakdownGroup] = useState<{
+    vehicleName: string;
+    dayGroup: DayGroup;
+  } | null>(null);
 
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [bannerWarning, setBannerWarning] = useState<string | null>(null);
@@ -67,7 +111,8 @@ export default function GeppoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearMonth, vehicleFilter]);
 
-  // 車両ごとにグループ化し、各グループ内はAPI側で既に日付順に並んでいる
+  // 車両ごとにグループ化し、さらに同じ日付の記録を1つにまとめる
+  // （同日に2回以上入力された場合、月報では1行にまとめて表示するため）
   const groups = useMemo(() => {
     const map = new Map<number, VehicleLogDTO[]>();
     for (const log of logs) {
@@ -75,17 +120,30 @@ export default function GeppoPage() {
       arr.push(log);
       map.set(log.vehicleId, arr);
     }
-    return Array.from(map.entries()).map(([vehicleId, list]) => ({
-      vehicleId,
-      vehicleName: list[0].vehicle.name,
-      vehicleNumber: list[0].vehicle.number,
-      list,
-    }));
+    return Array.from(map.entries()).map(([vehicleId, list]) => {
+      const byDate = new Map<string, VehicleLogDTO[]>();
+      for (const log of list) {
+        const key = toDateInputValue(log.date);
+        const arr = byDate.get(key) ?? [];
+        arr.push(log);
+        byDate.set(key, arr);
+      }
+      const dayGroups = Array.from(byDate.entries())
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([date, dayLogs]) => mergeDayLogs(date, dayLogs));
+
+      return {
+        vehicleId,
+        vehicleName: list[0].vehicle.name,
+        vehicleNumber: list[0].vehicle.number,
+        dayGroups,
+      };
+    });
   }, [logs]);
 
-  function meterDiff(list: VehicleLogDTO[], index: number): string {
+  function meterDiff(dayGroups: DayGroup[], index: number): string {
     if (index === 0) return "―";
-    const diff = list[index].endMeter - list[index - 1].endMeter;
+    const diff = dayGroups[index].mergedEndMeter - dayGroups[index - 1].mergedEndMeter;
     if (diff < 0) return `⚠ ${diff.toLocaleString("ja-JP")} km`;
     return `+${diff.toLocaleString("ja-JP")} km`;
   }
@@ -109,6 +167,14 @@ export default function GeppoPage() {
       note: log.note ?? "",
     });
     setEditErrors({});
+  }
+
+  function openRowAction(vehicleName: string, dayGroup: DayGroup) {
+    if (dayGroup.logs.length === 1) {
+      openEdit(dayGroup.logs[0]);
+    } else {
+      setBreakdownGroup({ vehicleName, dayGroup });
+    }
   }
 
   async function handleEditSubmit(e: FormEvent) {
@@ -171,6 +237,7 @@ export default function GeppoPage() {
       setBannerMessage("更新しました");
       setBannerWarning(data.warning ?? null);
       setEditForm(null);
+      setBreakdownGroup(null);
       loadLogs();
     } finally {
       setEditSubmitting(false);
@@ -187,6 +254,7 @@ export default function GeppoPage() {
       return;
     }
     setDeleteTarget(null);
+    setBreakdownGroup(null);
     setBannerMessage("削除しました");
     setBannerWarning(null);
     loadLogs();
@@ -273,47 +341,65 @@ export default function GeppoPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {group.list.map((log, i) => (
-                      <tr key={log.id} className="border-t border-gray-100 align-top">
+                    {group.dayGroups.map((dayGroup, i) => (
+                      <tr key={dayGroup.date} className="border-t border-gray-100 align-top">
                         <td className="px-3 py-3 whitespace-nowrap">
-                          {toDateDisplayWithWeekday(log.date)}
+                          {toDateDisplayWithWeekday(dayGroup.date)}
+                          {dayGroup.logs.length > 1 && (
+                            <span className="ml-2 inline-block text-xs font-bold text-brand-600 bg-brand-50 rounded px-2 py-0.5">
+                              {dayGroup.logs.length}件
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3">
-                          {splitDestinations(log.destination).map((d, idx) => (
+                          {dayGroup.mergedDestinations.map((d, idx) => (
                             <div key={idx}>・{d}</div>
                           ))}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">
-                          {formatMeter(log.endMeter)}
+                          {formatMeter(dayGroup.mergedEndMeter)}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap text-gray-500">
-                          {meterDiff(group.list, i)}
+                          {meterDiff(group.dayGroups, i)}
                         </td>
-                        <td className="px-3 py-3 text-gray-500">{log.fuelLocation || "―"}</td>
+                        <td className="px-3 py-3 text-gray-500">
+                          {dayGroup.mergedFuelLocation || "―"}
+                        </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap text-gray-500">
-                          {log.fuelAmount !== null ? `${log.fuelAmount} L` : "―"}
+                          {dayGroup.mergedFuelAmount !== null ? `${dayGroup.mergedFuelAmount} L` : "―"}
                         </td>
-                        <td className="px-3 py-3 text-gray-500">{log.note || "―"}</td>
+                        <td className="px-3 py-3 text-gray-500">{dayGroup.mergedNote || "―"}</td>
                         <td className="px-3 py-3 whitespace-nowrap text-gray-400">
-                          {toDateTimeDisplay(log.createdAt)}
+                          {toDateTimeDisplay(dayGroup.latestCreatedAt)}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex gap-2 justify-center">
-                            <button
-                              onClick={() => openEdit(log)}
-                              className="btn-small border-brand-500 text-brand-600"
-                            >
-                              編集
-                            </button>
-                            <button
-                              onClick={() => {
-                                setDeleteTarget(log);
-                                setDeleteError(null);
-                              }}
-                              className="btn-small border-red-400 text-red-600"
-                            >
-                              削除
-                            </button>
+                            {dayGroup.logs.length > 1 ? (
+                              <button
+                                onClick={() => openRowAction(group.vehicleName, dayGroup)}
+                                className="btn-small border-brand-500 text-brand-600"
+                              >
+                                内訳を見る
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => openEdit(dayGroup.logs[0])}
+                                  className="btn-small border-brand-500 text-brand-600"
+                                >
+                                  編集
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setDeleteTarget(dayGroup.logs[0]);
+                                    setDeleteError(null);
+                                  }}
+                                  className="btn-small border-red-400 text-red-600"
+                                >
+                                  削除
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -324,58 +410,146 @@ export default function GeppoPage() {
 
               {/* スマホ向け：カード表示 */}
               <div className="md:hidden flex flex-col gap-3">
-                {group.list.map((log, i) => (
-                  <div key={log.id} className="card">
+                {group.dayGroups.map((dayGroup, i) => (
+                  <div key={dayGroup.date} className="card">
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-bold text-gray-800">
-                        {toDateDisplayWithWeekday(log.date)}
+                        {toDateDisplayWithWeekday(dayGroup.date)}
+                        {dayGroup.logs.length > 1 && (
+                          <span className="ml-2 inline-block text-xs font-bold text-brand-600 bg-brand-50 rounded px-2 py-0.5">
+                            {dayGroup.logs.length}件
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-sm text-gray-600 mb-2">
-                      {splitDestinations(log.destination).map((d, idx) => (
+                      {dayGroup.mergedDestinations.map((d, idx) => (
                         <div key={idx}>・{d}</div>
                       ))}
                     </div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="font-bold text-gray-800">
-                        {formatMeter(log.endMeter)}
+                        {formatMeter(dayGroup.mergedEndMeter)}
                       </span>
-                      <span className="text-gray-500">{meterDiff(group.list, i)}</span>
+                      <span className="text-gray-500">{meterDiff(group.dayGroups, i)}</span>
                     </div>
-                    {(log.fuelLocation || log.fuelAmount !== null) && (
+                    {(dayGroup.mergedFuelLocation || dayGroup.mergedFuelAmount !== null) && (
                       <div className="text-sm text-gray-500 mb-2">
-                        給油：{log.fuelLocation || "―"}
-                        {log.fuelAmount !== null ? `（${log.fuelAmount} L）` : ""}
+                        給油：{dayGroup.mergedFuelLocation || "―"}
+                        {dayGroup.mergedFuelAmount !== null ? `（${dayGroup.mergedFuelAmount} L）` : ""}
                       </div>
                     )}
-                    {log.note && (
-                      <div className="text-sm text-gray-500 mb-2">備考：{log.note}</div>
+                    {dayGroup.mergedNote && (
+                      <div className="text-sm text-gray-500 mb-2">備考：{dayGroup.mergedNote}</div>
                     )}
                     <div className="text-xs text-gray-400 mb-3">
-                      登録：{toDateTimeDisplay(log.createdAt)}
+                      登録：{toDateTimeDisplay(dayGroup.latestCreatedAt)}
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => openEdit(log)}
-                        className="btn-small border-brand-500 text-brand-600 flex-1"
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDeleteTarget(log);
-                          setDeleteError(null);
-                        }}
-                        className="btn-small border-red-400 text-red-600 flex-1"
-                      >
-                        削除
-                      </button>
+                      {dayGroup.logs.length > 1 ? (
+                        <button
+                          onClick={() => openRowAction(group.vehicleName, dayGroup)}
+                          className="btn-small border-brand-500 text-brand-600 flex-1"
+                        >
+                          内訳を見る
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => openEdit(dayGroup.logs[0])}
+                            className="btn-small border-brand-500 text-brand-600 flex-1"
+                          >
+                            編集
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeleteTarget(dayGroup.logs[0]);
+                              setDeleteError(null);
+                            }}
+                            className="btn-small border-red-400 text-red-600 flex-1"
+                          >
+                            削除
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </section>
           ))}
+        </div>
+      )}
+
+      {/* 内訳モーダル（同日に複数件ある場合） */}
+      {breakdownGroup && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center px-4 py-8 z-50 overflow-y-auto">
+          <div className="card max-w-lg w-full flex flex-col gap-4 my-auto">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">
+                {toDateDisplayWithWeekday(breakdownGroup.dayGroup.date)}の内訳
+              </h2>
+              <p className="text-sm text-gray-500">
+                {breakdownGroup.vehicleName}／{breakdownGroup.dayGroup.logs.length}件の入力があります
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {breakdownGroup.dayGroup.logs.map((log, idx) => (
+                <div key={log.id} className="rounded-xl border border-gray-200 p-4">
+                  <div className="text-sm font-bold text-gray-500 mb-2">{idx + 1}回目</div>
+                  <div className="text-sm text-gray-700 mb-1">
+                    {splitDestinations(log.destination).map((d, dIdx) => (
+                      <div key={dIdx}>・{d}</div>
+                    ))}
+                  </div>
+                  <div className="text-sm text-gray-700 mb-1">
+                    終業時メーター：{formatMeter(log.endMeter)}
+                  </div>
+                  {(log.fuelLocation || log.fuelAmount !== null) && (
+                    <div className="text-sm text-gray-500 mb-1">
+                      給油：{log.fuelLocation || "―"}
+                      {log.fuelAmount !== null ? `（${log.fuelAmount} L）` : ""}
+                    </div>
+                  )}
+                  {log.note && (
+                    <div className="text-sm text-gray-500 mb-1">備考：{log.note}</div>
+                  )}
+                  <div className="text-xs text-gray-400 mb-3">
+                    登録：{toDateTimeDisplay(log.createdAt)}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setBreakdownGroup(null);
+                        openEdit(log);
+                      }}
+                      className="btn-small border-brand-500 text-brand-600 flex-1"
+                    >
+                      この記録を編集
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDeleteTarget(log);
+                        setDeleteError(null);
+                      }}
+                      className="btn-small border-red-400 text-red-600 flex-1"
+                    >
+                      この記録を削除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setBreakdownGroup(null)}
+              className="btn-secondary"
+            >
+              閉じる
+            </button>
+          </div>
         </div>
       )}
 

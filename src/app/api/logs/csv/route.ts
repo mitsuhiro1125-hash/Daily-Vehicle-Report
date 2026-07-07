@@ -10,11 +10,14 @@ import {
 
 // GET /api/logs/csv?yearMonth=YYYY-MM&vehicleId=
 // 月報一覧と同じ絞り込み条件でCSVを生成してダウンロードさせる
-// 出力項目：日付・訪問先・終業時メーター・給油場所・給油量
+// 出力項目：日・訪問先・終業時メーター・給油場所・給油量・給油金額・備考
 //
-// 「月末の月報にそのままコピペできるように」という要望に合わせて、
-// 実際に入力された日だけでなく、月の全日（例：7月なら7/1〜7/31）を出力し、
-// 入力のない日は空欄の行として出力する。
+// 社内で使っている「運転日報」Excelシートにそのまま転記できるように、
+// 以下の仕様にしている。
+// ・日付は「1」〜「31」のような日番号のみ（年月はファイル名・シート側で分かるため）
+// ・実際に入力された日だけでなく、月の全日を出力し、入力のない日は空欄の行にする
+// ・給油金額は入力画面には存在しない列だが、Excel側で手入力できるよう常に空欄で出力する
+// ・備考は登録された内容をそのまま出力する
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const yearMonth = sp.get("yearMonth") || currentYearMonth();
@@ -23,7 +26,13 @@ export async function GET(request: NextRequest) {
   const { start, end } = yearMonthToRange(yearMonth);
   const days = daysInYearMonth(yearMonth);
 
-  const header = ["日付", "訪問先", "終業時メーター", "給油場所", "給油量"];
+  const header = ["日", "訪問先", "終業時メーター", "給油場所", "給油量", "給油金額", "備考"];
+
+  // "YYYY-MM-DD" → "1"〜"31"（先頭ゼロなしの日番号）に変換
+  function toDayNumber(dateStr: string): string {
+    const dayPart = dateStr.split("-")[2] ?? "";
+    return String(Number(dayPart));
+  }
 
   function logsToRowsForDay(
     dateStr: string,
@@ -32,26 +41,52 @@ export async function GET(request: NextRequest) {
       endMeter: number;
       fuelLocation: string | null;
       fuelAmount: number | null;
+      note: string | null;
     }[]
   ): string {
+    const dayNumber = toDayNumber(dateStr);
+
     if (logsOnDay.length === 0) {
-      // 入力のない日は、日付だけ入れて他は空欄の行にする
-      return [csvEscape(dateStr), "", "", "", ""].join(",");
+      // 入力のない日は、日番号だけ入れて他は空欄の行にする
+      return [dayNumber, "", "", "", "", "", ""].map(csvEscape).join(",");
     }
-    return logsOnDay
-      .map((log) => {
-        const destinationForCsv = log.destination.split("\n").join("、");
-        return [
-          dateStr,
-          destinationForCsv,
-          log.endMeter,
-          log.fuelLocation ?? "",
-          log.fuelAmount ?? "",
-        ]
-          .map(csvEscape)
-          .join(",");
-      })
-      .join("\r\n");
+
+    // 同じ日に複数回入力がある場合は、1日1行にまとめる
+    // ・訪問先：すべての訪問先をつなげる
+    // ・終業時メーター：その日の最後（一番大きい値）を採用
+    // ・給油場所：入力があるものをすべてつなげる
+    // ・給油量：入力があるものの合計
+    // ・給油金額：入力画面がないため常に空欄
+    // ・備考：入力があるものをすべてつなげる
+    const allDestinations = logsOnDay.flatMap((log) =>
+      log.destination.split("\n").map((s) => s.trim()).filter((s) => s.length > 0)
+    );
+    const destinationForCsv = allDestinations.join("、");
+
+    const endMeter = Math.max(...logsOnDay.map((log) => log.endMeter));
+
+    const fuelLocations = logsOnDay.map((log) => log.fuelLocation).filter((v): v is string => !!v);
+    const fuelLocationForCsv = fuelLocations.join("、");
+
+    const fuelAmounts = logsOnDay
+      .map((log) => log.fuelAmount)
+      .filter((v): v is number => v !== null && v !== undefined);
+    const fuelAmountForCsv = fuelAmounts.length > 0 ? fuelAmounts.reduce((a, b) => a + b, 0) : "";
+
+    const notes = logsOnDay.map((log) => log.note).filter((v): v is string => !!v);
+    const noteForCsv = notes.join(" ／ ");
+
+    return [
+      dayNumber,
+      destinationForCsv,
+      endMeter,
+      fuelLocationForCsv,
+      fuelAmountForCsv,
+      "", // 給油金額（常に空欄）
+      noteForCsv,
+    ]
+      .map(csvEscape)
+      .join(",");
   }
 
   const blocks: string[] = [];
