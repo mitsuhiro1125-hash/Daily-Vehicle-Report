@@ -10,11 +10,13 @@ import {
 
 // GET /api/logs/csv?yearMonth=YYYY-MM&vehicleId=
 // 月報一覧と同じ絞り込み条件でCSVを生成してダウンロードさせる
-// 出力項目：日・訪問先・終業時メーター・給油場所・給油量・給油金額・備考
+// 出力項目：日付・訪問先・終業時メーター・給油場所・給油量・給油金額・日（数字）・備考
 //
 // 社内で使っている「運転日報」Excelシートにそのまま転記できるように、
 // 以下の仕様にしている。
-// ・日付は「1」〜「31」のような日番号のみ（年月はファイル名・シート側で分かるため）
+// ・1列目の「日付」は通常の日付表記（YYYY-MM-DD）
+// ・「給油金額」と「備考」の間に、日番号のみの列（1〜31）をもう1つ追加
+//   （Excel側で「給油場所」から右をまとめて貼り付けるときの目印用）
 // ・実際に入力された日だけでなく、月の全日を出力し、入力のない日は空欄の行にする
 // ・給油金額は入力画面には存在しない列だが、Excel側で手入力できるよう常に空欄で出力する
 // ・備考は登録された内容をそのまま出力する
@@ -26,7 +28,16 @@ export async function GET(request: NextRequest) {
   const { start, end } = yearMonthToRange(yearMonth);
   const days = daysInYearMonth(yearMonth);
 
-  const header = ["日", "訪問先", "終業時メーター", "給油場所", "給油量", "給油金額", "備考"];
+  const header = [
+    "日付",
+    "訪問先",
+    "終業時メーター",
+    "給油場所",
+    "給油量",
+    "給油金額",
+    "日",
+    "備考",
+  ];
 
   // "YYYY-MM-DD" → "1"〜"31"（先頭ゼロなしの日番号）に変換
   function toDayNumber(dateStr: string): string {
@@ -47,8 +58,8 @@ export async function GET(request: NextRequest) {
     const dayNumber = toDayNumber(dateStr);
 
     if (logsOnDay.length === 0) {
-      // 入力のない日は、日番号だけ入れて他は空欄の行にする
-      return [dayNumber, "", "", "", "", "", ""].map(csvEscape).join(",");
+      // 入力のない日は、日付・日番号だけ入れて他は空欄の行にする
+      return [dateStr, "", "", "", "", "", dayNumber, ""].map(csvEscape).join(",");
     }
 
     // 同じ日に複数回入力がある場合は、1日1行にまとめる
@@ -77,12 +88,13 @@ export async function GET(request: NextRequest) {
     const noteForCsv = notes.join(" ／ ");
 
     return [
-      dayNumber,
+      dateStr,
       destinationForCsv,
       endMeter,
       fuelLocationForCsv,
       fuelAmountForCsv,
       "", // 給油金額（常に空欄）
+      dayNumber,
       noteForCsv,
     ]
       .map(csvEscape)
