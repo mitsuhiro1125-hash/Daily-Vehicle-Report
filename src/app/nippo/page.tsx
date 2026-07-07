@@ -330,8 +330,9 @@ export default function NippoPage() {
             type="number"
             inputMode="decimal"
             min={0}
+            step="0.01"
             className="input-field"
-            placeholder="例：32.5"
+            placeholder="例：32.55"
             value={fuelAmount}
             onChange={(e) => setFuelAmount(e.target.value)}
           />

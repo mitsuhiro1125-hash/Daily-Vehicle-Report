@@ -50,6 +50,19 @@ export function yearMonthToRange(yearMonth: string): { start: Date; end: Date } 
   return { start, end };
 }
 
+/** "YYYY-MM" のその月の全日付を "YYYY-MM-DD" の配列で返す（例：7月なら7/1〜7/31） */
+export function daysInYearMonth(yearMonth: string): string[] {
+  const [yStr, mStr] = yearMonth.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const lastDay = new Date(y, m, 0).getDate();
+  const days: string[] = [];
+  for (let d = 1; d <= lastDay; d++) {
+    days.push(`${yStr}-${mStr}-${String(d).padStart(2, "0")}`);
+  }
+  return days;
+}
+
 /** 訪問先の複数行文字列を配列に分解する（空行は除去） */
 export function splitDestinations(destination: string): string[] {
   return destination

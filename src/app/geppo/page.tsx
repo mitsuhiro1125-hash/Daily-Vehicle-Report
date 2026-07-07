@@ -474,6 +474,7 @@ export default function GeppoPage() {
                 type="number"
                 inputMode="decimal"
                 min={0}
+                step="0.01"
                 className="input-field"
                 value={editForm.fuelAmount}
                 onChange={(e) =>
