@@ -13,7 +13,6 @@ async function main() {
   // 既存データを一旦クリア（順序に注意：外部キー制約のため logs から削除）
   await prisma.vehicleLog.deleteMany();
   await prisma.vehicle.deleteMany();
-  await prisma.driver.deleteMany();
 
   await createSampleData(prisma);
 

@@ -22,12 +22,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "キーが正しくありません。" }, { status: 403 });
   }
 
-  const [vehicleCount, driverCount] = await Promise.all([
-    prisma.vehicle.count(),
-    prisma.driver.count(),
-  ]);
+  const vehicleCount = await prisma.vehicle.count();
 
-  if (vehicleCount > 0 || driverCount > 0) {
+  if (vehicleCount > 0) {
     return NextResponse.json({
       message: "すでにデータが存在するため、何もしませんでした。",
     });

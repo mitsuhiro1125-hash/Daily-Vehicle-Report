@@ -11,27 +11,26 @@ import {
   splitDestinations,
   joinDestinations,
 } from "@/lib/utils";
-import type { VehicleDTO, DriverDTO, VehicleLogDTO } from "@/lib/types";
+import type { VehicleDTO, VehicleLogDTO } from "@/lib/types";
 
 type EditForm = {
   id: number;
   date: string;
   vehicleId: string;
-  driverId: string;
   destination: string; // 改行区切りのテキストとして編集
   endMeter: string;
+  fuelLocation: string;
+  fuelAmount: string;
   note: string;
 };
 
 export default function GeppoPage() {
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
-  const [drivers, setDrivers] = useState<DriverDTO[]>([]);
   const [logs, setLogs] = useState<VehicleLogDTO[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [yearMonth, setYearMonth] = useState(currentYearMonth());
   const [vehicleFilter, setVehicleFilter] = useState<string>("");
-  const [driverFilter, setDriverFilter] = useState<string>("");
 
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
@@ -45,12 +44,8 @@ export default function GeppoPage() {
 
   useEffect(() => {
     async function loadMasters() {
-      const [vRes, dRes] = await Promise.all([
-        fetch("/api/vehicles?includeInactive=1"),
-        fetch("/api/drivers?includeInactive=1"),
-      ]);
-      setVehicles(await vRes.json());
-      setDrivers(await dRes.json());
+      const res = await fetch("/api/vehicles?includeInactive=1");
+      setVehicles(await res.json());
     }
     loadMasters();
   }, []);
@@ -60,7 +55,6 @@ export default function GeppoPage() {
     const params = new URLSearchParams();
     params.set("yearMonth", yearMonth);
     if (vehicleFilter) params.set("vehicleId", vehicleFilter);
-    if (driverFilter) params.set("driverId", driverFilter);
 
     const res = await fetch(`/api/logs?${params.toString()}`);
     const data: VehicleLogDTO[] = await res.json();
@@ -71,7 +65,7 @@ export default function GeppoPage() {
   useEffect(() => {
     loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yearMonth, vehicleFilter, driverFilter]);
+  }, [yearMonth, vehicleFilter]);
 
   // 車両ごとにグループ化し、各グループ内はAPI側で既に日付順に並んでいる
   const groups = useMemo(() => {
@@ -100,7 +94,6 @@ export default function GeppoPage() {
     const params = new URLSearchParams();
     params.set("yearMonth", yearMonth);
     if (vehicleFilter) params.set("vehicleId", vehicleFilter);
-    if (driverFilter) params.set("driverId", driverFilter);
     window.location.href = `/api/logs/csv?${params.toString()}`;
   }
 
@@ -109,9 +102,10 @@ export default function GeppoPage() {
       id: log.id,
       date: toDateInputValue(log.date),
       vehicleId: String(log.vehicleId),
-      driverId: String(log.driverId),
       destination: log.destination,
       endMeter: String(log.endMeter),
+      fuelLocation: log.fuelLocation ?? "",
+      fuelAmount: log.fuelAmount !== null ? String(log.fuelAmount) : "",
       note: log.note ?? "",
     });
     setEditErrors({});
@@ -126,11 +120,17 @@ export default function GeppoPage() {
     const newErrors: Record<string, string> = {};
     if (!editForm.date) newErrors.date = "日付は必須です";
     if (!editForm.vehicleId) newErrors.vehicleId = "車両は必須です";
-    if (!editForm.driverId) newErrors.driverId = "運転者は必須です";
     if (!destinationJoined) newErrors.destination = "訪問先は必須です";
     const meterNum = Number(editForm.endMeter);
     if (editForm.endMeter === "" || Number.isNaN(meterNum) || meterNum < 0) {
       newErrors.endMeter = "0以上の数値を入力してください";
+    }
+    let fuelAmountNum: number | null = null;
+    if (editForm.fuelAmount !== "") {
+      fuelAmountNum = Number(editForm.fuelAmount);
+      if (Number.isNaN(fuelAmountNum) || fuelAmountNum < 0) {
+        newErrors.fuelAmount = "0以上の数値を入力してください";
+      }
     }
     if (Object.keys(newErrors).length > 0) {
       setEditErrors(newErrors);
@@ -145,9 +145,10 @@ export default function GeppoPage() {
         body: JSON.stringify({
           date: editForm.date,
           vehicleId: Number(editForm.vehicleId),
-          driverId: Number(editForm.driverId),
           destination: destinationJoined,
           endMeter: meterNum,
+          fuelLocation: editForm.fuelLocation.trim() || null,
+          fuelAmount: fuelAmountNum,
           note: editForm.note,
         }),
       });
@@ -232,21 +233,6 @@ export default function GeppoPage() {
             ))}
           </select>
         </div>
-        <div className="flex-1">
-          <label className="label-text">運転者</label>
-          <select
-            className="input-field bg-white"
-            value={driverFilter}
-            onChange={(e) => setDriverFilter(e.target.value)}
-          >
-            <option value="">すべて</option>
-            {drivers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div className="flex justify-end mb-6">
@@ -276,10 +262,11 @@ export default function GeppoPage() {
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="px-3 py-3 text-left">日付</th>
-                      <th className="px-3 py-3 text-left">運転者</th>
                       <th className="px-3 py-3 text-left">訪問先</th>
                       <th className="px-3 py-3 text-right">終業時メーター</th>
                       <th className="px-3 py-3 text-right">前回比</th>
+                      <th className="px-3 py-3 text-left">給油場所</th>
+                      <th className="px-3 py-3 text-right">給油量</th>
                       <th className="px-3 py-3 text-left">備考</th>
                       <th className="px-3 py-3 text-left">登録日時</th>
                       <th className="px-3 py-3 text-center">操作</th>
@@ -291,7 +278,6 @@ export default function GeppoPage() {
                         <td className="px-3 py-3 whitespace-nowrap">
                           {toDateDisplayWithWeekday(log.date)}
                         </td>
-                        <td className="px-3 py-3">{log.driver.name}</td>
                         <td className="px-3 py-3">
                           {splitDestinations(log.destination).map((d, idx) => (
                             <div key={idx}>・{d}</div>
@@ -302,6 +288,10 @@ export default function GeppoPage() {
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap text-gray-500">
                           {meterDiff(group.list, i)}
+                        </td>
+                        <td className="px-3 py-3 text-gray-500">{log.fuelLocation || "―"}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap text-gray-500">
+                          {log.fuelAmount !== null ? `${log.fuelAmount} L` : "―"}
                         </td>
                         <td className="px-3 py-3 text-gray-500">{log.note || "―"}</td>
                         <td className="px-3 py-3 whitespace-nowrap text-gray-400">
@@ -340,7 +330,6 @@ export default function GeppoPage() {
                       <div className="font-bold text-gray-800">
                         {toDateDisplayWithWeekday(log.date)}
                       </div>
-                      <div className="text-sm text-gray-400">{log.driver.name}</div>
                     </div>
                     <div className="text-sm text-gray-600 mb-2">
                       {splitDestinations(log.destination).map((d, idx) => (
@@ -353,6 +342,12 @@ export default function GeppoPage() {
                       </span>
                       <span className="text-gray-500">{meterDiff(group.list, i)}</span>
                     </div>
+                    {(log.fuelLocation || log.fuelAmount !== null) && (
+                      <div className="text-sm text-gray-500 mb-2">
+                        給油：{log.fuelLocation || "―"}
+                        {log.fuelAmount !== null ? `（${log.fuelAmount} L）` : ""}
+                      </div>
+                    )}
                     {log.note && (
                       <div className="text-sm text-gray-500 mb-2">備考：{log.note}</div>
                     )}
@@ -431,26 +426,6 @@ export default function GeppoPage() {
             </div>
 
             <div>
-              <label className="label-text">運転者</label>
-              <select
-                className="input-field bg-white"
-                value={editForm.driverId}
-                onChange={(e) =>
-                  setEditForm((f) => (f ? { ...f, driverId: e.target.value } : f))
-                }
-              >
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-              {editErrors.driverId && (
-                <p className="text-red-600 font-bold">{editErrors.driverId}</p>
-              )}
-            </div>
-
-            <div>
               <label className="label-text">訪問先（複数ある場合は改行で分けてください）</label>
               <textarea
                 className="input-field min-h-[90px]"
@@ -482,7 +457,41 @@ export default function GeppoPage() {
             </div>
 
             <div>
+              <label className="label-text">給油場所（任意）</label>
+              <input
+                type="text"
+                className="input-field"
+                value={editForm.fuelLocation}
+                onChange={(e) =>
+                  setEditForm((f) => (f ? { ...f, fuelLocation: e.target.value } : f))
+                }
+              />
+            </div>
+
+            <div>
+              <label className="label-text">給油量（L・任意）</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                className="input-field"
+                value={editForm.fuelAmount}
+                onChange={(e) =>
+                  setEditForm((f) => (f ? { ...f, fuelAmount: e.target.value } : f))
+                }
+              />
+              {editErrors.fuelAmount && (
+                <p className="text-red-600 font-bold">{editErrors.fuelAmount}</p>
+              )}
+            </div>
+
+            <div>
               <label className="label-text">備考（任意）</label>
+              <p className="text-sm text-gray-500 mb-2">
+                使用高速道路（＊参照）、消耗品料、作業料、その他費用
+                <br />
+                ＊使用高速道路：①NEXCO、②阪神高速、③神戸公社、④その他
+              </p>
               <textarea
                 className="input-field min-h-[70px]"
                 value={editForm.note}

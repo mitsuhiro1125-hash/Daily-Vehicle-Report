@@ -21,12 +21,6 @@ export default function HomePage() {
       desc: "車両の登録・編集・削除",
       color: "bg-slate-600",
     },
-    {
-      href: "/drivers",
-      label: "運転者管理",
-      desc: "運転者の登録・編集・削除",
-      color: "bg-slate-600",
-    },
   ];
 
   return (
@@ -40,7 +34,7 @@ export default function HomePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         {menuItems.map((item) => (
           <Link
             key={item.href}

@@ -13,9 +13,10 @@ function validateLogInput(body: unknown): {
   data: {
     date: string;
     vehicleId: number;
-    driverId: number;
     destination: string;
     endMeter: number;
+    fuelLocation: string | null;
+    fuelAmount: number | null;
     note: string | null;
   } | null;
 } {
@@ -28,11 +29,6 @@ function validateLogInput(body: unknown): {
   const vehicleId = Number(b.vehicleId);
   if (!b.vehicleId || Number.isNaN(vehicleId)) {
     errors.push({ field: "vehicleId", message: "車両は必須です" });
-  }
-
-  const driverId = Number(b.driverId);
-  if (!b.driverId || Number.isNaN(driverId)) {
-    errors.push({ field: "driverId", message: "運転者は必須です" });
   }
 
   const destination =
@@ -51,13 +47,32 @@ function validateLogInput(body: unknown): {
     });
   }
 
+  // 給油場所・給油量は任意項目
+  const fuelLocation =
+    typeof b.fuelLocation === "string" && b.fuelLocation.trim() !== ""
+      ? b.fuelLocation.trim()
+      : null;
+
+  let fuelAmount: number | null = null;
+  if (b.fuelAmount !== undefined && b.fuelAmount !== null && b.fuelAmount !== "") {
+    const n = Number(b.fuelAmount);
+    if (Number.isNaN(n) || n < 0) {
+      errors.push({
+        field: "fuelAmount",
+        message: "給油量は0以上の数値で入力してください",
+      });
+    } else {
+      fuelAmount = n;
+    }
+  }
+
   if (errors.length > 0) return { errors, data: null };
 
   const note = typeof b.note === "string" && b.note.trim() !== "" ? b.note.trim() : null;
 
   return {
     errors: [],
-    data: { date, vehicleId, driverId, destination, endMeter, note },
+    data: { date, vehicleId, destination, endMeter, fuelLocation, fuelAmount, note },
   };
 }
 
@@ -89,12 +104,13 @@ export async function PUT(
       data: {
         date: new Date(`${data.date}T00:00:00`),
         vehicleId: data.vehicleId,
-        driverId: data.driverId,
         destination: data.destination,
         endMeter: data.endMeter,
+        fuelLocation: data.fuelLocation,
+        fuelAmount: data.fuelAmount,
         note: data.note,
       },
-      include: { vehicle: true, driver: true },
+      include: { vehicle: true },
     });
 
     let warning: string | null = null;

@@ -3,22 +3,23 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
 import PageHeader from "@/components/PageHeader";
 import { todayInputValue, joinDestinations } from "@/lib/utils";
-import type { VehicleDTO, DriverDTO } from "@/lib/types";
+import type { VehicleDTO } from "@/lib/types";
 
-type FormErrors = Partial<Record<"date" | "vehicleId" | "driverId" | "destination" | "endMeter", string>>;
+type FormErrors = Partial<Record<"date" | "vehicleId" | "destination" | "endMeter" | "fuelAmount", string>>;
+
+// この端末（スマホ・パソコン）に、最後に選んだ車両を覚えておくためのキー
+const LAST_VEHICLE_STORAGE_KEY = "vehicle-report:lastVehicleId";
 
 export default function NippoPage() {
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
-  const [drivers, setDrivers] = useState<DriverDTO[]>([]);
   const [loadingMasters, setLoadingMasters] = useState(true);
 
   const [date, setDate] = useState(todayInputValue());
   const [vehicleId, setVehicleId] = useState<string>("");
-  const [driverMode, setDriverMode] = useState<"select" | "manual">("select");
-  const [driverId, setDriverId] = useState<string>("");
-  const [driverManualName, setDriverManualName] = useState("");
   const [destinations, setDestinations] = useState<string[]>([""]);
   const [endMeter, setEndMeter] = useState<string>("");
+  const [fuelLocation, setFuelLocation] = useState("");
+  const [fuelAmount, setFuelAmount] = useState("");
   const [note, setNote] = useState("");
 
   const [lastMeter, setLastMeter] = useState<number | null>(null);
@@ -28,18 +29,18 @@ export default function NippoPage() {
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // 車両・運転者マスタを読み込む
+  // 車両マスタを読み込み、この端末で前回選ばれていた車両があれば自動で選択する
   useEffect(() => {
     async function load() {
       setLoadingMasters(true);
-      const [vRes, dRes] = await Promise.all([
-        fetch("/api/vehicles"),
-        fetch("/api/drivers"),
-      ]);
-      const vData: VehicleDTO[] = await vRes.json();
-      const dData: DriverDTO[] = await dRes.json();
-      setVehicles(vData);
-      setDrivers(dData);
+      const res = await fetch("/api/vehicles");
+      const data: VehicleDTO[] = await res.json();
+      setVehicles(data);
+
+      const remembered = window.localStorage.getItem(LAST_VEHICLE_STORAGE_KEY);
+      if (remembered && data.some((v) => String(v.id) === remembered)) {
+        setVehicleId(remembered);
+      }
       setLoadingMasters(false);
     }
     load();
@@ -62,6 +63,13 @@ export default function NippoPage() {
     fetchLastMeter(vehicleId);
   }, [vehicleId, fetchLastMeter]);
 
+  function handleVehicleChange(newVehicleId: string) {
+    setVehicleId(newVehicleId);
+    if (newVehicleId) {
+      window.localStorage.setItem(LAST_VEHICLE_STORAGE_KEY, newVehicleId);
+    }
+  }
+
   function addDestinationField() {
     setDestinations((prev) => [...prev, ""]);
   }
@@ -74,15 +82,15 @@ export default function NippoPage() {
     setDestinations((prev) => prev.map((d, i) => (i === index ? value : d)));
   }
 
-  function clearForm(keepVehicleAndDriver: boolean) {
+  function clearForm(keepVehicle: boolean) {
     setDate(todayInputValue());
-    if (!keepVehicleAndDriver) {
+    if (!keepVehicle) {
       setVehicleId("");
-      setDriverId("");
-      setDriverManualName("");
     }
     setDestinations([""]);
     setEndMeter("");
+    setFuelLocation("");
+    setFuelAmount("");
     setNote("");
     setErrors({});
     setSubmitError(null);
@@ -92,13 +100,6 @@ export default function NippoPage() {
     const newErrors: FormErrors = {};
     if (!date) newErrors.date = "日付を入力してください";
     if (!vehicleId) newErrors.vehicleId = "車両を選択してください";
-
-    if (driverMode === "select") {
-      if (!driverId) newErrors.driverId = "運転者を選択してください";
-    } else {
-      if (!driverManualName.trim())
-        newErrors.driverId = "運転者名を入力してください";
-    }
 
     const joined = joinDestinations(destinations);
     if (!joined) newErrors.destination = "訪問先を入力してください";
@@ -112,28 +113,15 @@ export default function NippoPage() {
       }
     }
 
+    if (fuelAmount !== "") {
+      const n = Number(fuelAmount);
+      if (Number.isNaN(n) || n < 0) {
+        newErrors.fuelAmount = "0以上の数値を入力してください";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }
-
-  async function resolveDriverId(): Promise<number | null> {
-    if (driverMode === "select") {
-      return Number(driverId);
-    }
-    // 手入力の場合は、同名の運転者がいれば流用、いなければ新規登録して使う
-    const name = driverManualName.trim();
-    const existing = drivers.find((d) => d.name === name);
-    if (existing) return existing.id;
-
-    const res = await fetch("/api/drivers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, sortOrder: 999, isActive: true }),
-    });
-    if (!res.ok) return null;
-    const created: DriverDTO = await res.json();
-    setDrivers((prev) => [...prev, created]);
-    return created.id;
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -146,22 +134,16 @@ export default function NippoPage() {
 
     setSubmitting(true);
     try {
-      const resolvedDriverId = await resolveDriverId();
-      if (!resolvedDriverId) {
-        setSubmitError("運転者の登録に失敗しました。もう一度お試しください。");
-        setSubmitting(false);
-        return;
-      }
-
       const res = await fetch("/api/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
           vehicleId: Number(vehicleId),
-          driverId: resolvedDriverId,
           destination: joinDestinations(destinations),
           endMeter: Number(endMeter),
+          fuelLocation: fuelLocation.trim() || null,
+          fuelAmount: fuelAmount === "" ? null : Number(fuelAmount),
           note,
         }),
       });
@@ -185,16 +167,10 @@ export default function NippoPage() {
       setSuccessMessage("登録しました");
       if (data.warning) setWarningMessage(data.warning);
 
-      // 同じ車両・運転者で続けて入力しやすいよう、選択内容は維持してクリアする
+      // 同じ車両で続けて入力しやすいよう、車両の選択は維持してクリアする
       const keptVehicleId = vehicleId;
-      const keptDriverId = driverId;
-      const keptDriverMode = driverMode;
-      const keptDriverManualName = driverManualName;
       clearForm(true);
       setVehicleId(keptVehicleId);
-      setDriverMode(keptDriverMode);
-      setDriverId(keptDriverId);
-      setDriverManualName(keptDriverManualName);
       fetchLastMeter(keptVehicleId);
     } finally {
       setSubmitting(false);
@@ -256,7 +232,7 @@ export default function NippoPage() {
           <select
             className="input-field bg-white"
             value={vehicleId}
-            onChange={(e) => setVehicleId(e.target.value)}
+            onChange={(e) => handleVehicleChange(e.target.value)}
           >
             <option value="">選択してください</option>
             {vehicles.map((v) => (
@@ -267,47 +243,6 @@ export default function NippoPage() {
           </select>
           {errors.vehicleId && (
             <p className="text-red-600 font-bold mt-1">{errors.vehicleId}</p>
-          )}
-        </div>
-
-        {/* 運転者 */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="label-text mb-0">運転者</label>
-            <button
-              type="button"
-              onClick={() =>
-                setDriverMode((m) => (m === "select" ? "manual" : "select"))
-              }
-              className="text-sm text-brand-600 underline underline-offset-4 font-bold"
-            >
-              {driverMode === "select" ? "名簿にない場合は直接入力" : "名簿から選ぶ"}
-            </button>
-          </div>
-          {driverMode === "select" ? (
-            <select
-              className="input-field bg-white"
-              value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
-            >
-              <option value="">選択してください</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              className="input-field"
-              placeholder="運転者名を入力"
-              value={driverManualName}
-              onChange={(e) => setDriverManualName(e.target.value)}
-            />
-          )}
-          {errors.driverId && (
-            <p className="text-red-600 font-bold mt-1">{errors.driverId}</p>
           )}
         </div>
 
@@ -376,9 +311,43 @@ export default function NippoPage() {
           )}
         </div>
 
+        {/* 給油場所 */}
+        <div>
+          <label className="label-text">給油場所（任意）</label>
+          <input
+            type="text"
+            className="input-field"
+            placeholder="例：ENEOS 目黒店"
+            value={fuelLocation}
+            onChange={(e) => setFuelLocation(e.target.value)}
+          />
+        </div>
+
+        {/* 給油量 */}
+        <div>
+          <label className="label-text">給油量（L・任意）</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            className="input-field"
+            placeholder="例：32.5"
+            value={fuelAmount}
+            onChange={(e) => setFuelAmount(e.target.value)}
+          />
+          {errors.fuelAmount && (
+            <p className="text-red-600 font-bold mt-1">{errors.fuelAmount}</p>
+          )}
+        </div>
+
         {/* 備考 */}
         <div>
           <label className="label-text">備考（任意）</label>
+          <p className="text-sm text-gray-500 mb-2">
+            使用高速道路（＊参照）、消耗品料、作業料、その他費用
+            <br />
+            ＊使用高速道路：①NEXCO、②阪神高速、③神戸公社、④その他
+          </p>
           <textarea
             className="input-field min-h-[90px]"
             placeholder="必要があれば入力してください"

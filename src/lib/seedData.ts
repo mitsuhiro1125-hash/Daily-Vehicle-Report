@@ -23,23 +23,14 @@ export async function createSampleData(prisma: PrismaClient) {
     data: { name: "軽トラック1号", number: "品川480 い 90-12", sortOrder: 3, isActive: true },
   });
 
-  const driverYamada = await prisma.driver.create({
-    data: { name: "山田", sortOrder: 1, isActive: true },
-  });
-  const driverTanaka = await prisma.driver.create({
-    data: { name: "田中", sortOrder: 2, isActive: true },
-  });
-  const driverSato = await prisma.driver.create({
-    data: { name: "佐藤", sortOrder: 3, isActive: true },
-  });
-
   await prisma.vehicleLog.create({
     data: {
       date: daysAgo(4),
       vehicleId: vehicle1.id,
-      driverId: driverYamada.id,
       destination: "株式会社サンプル商事\n本社倉庫",
       endMeter: 12050,
+      fuelLocation: "ENEOS 目黒店",
+      fuelAmount: 32.5,
       note: "納品対応",
     },
   });
@@ -47,7 +38,6 @@ export async function createSampleData(prisma: PrismaClient) {
     data: {
       date: daysAgo(3),
       vehicleId: vehicle1.id,
-      driverId: driverTanaka.id,
       destination: "取引先A社",
       endMeter: 12180,
       note: null,
@@ -57,7 +47,6 @@ export async function createSampleData(prisma: PrismaClient) {
     data: {
       date: daysAgo(2),
       vehicleId: vehicle2.id,
-      driverId: driverSato.id,
       destination: "北支店\n南支店\n展示会場",
       endMeter: 8420,
       note: "展示会準備のため終業が遅くなりました",
@@ -67,7 +56,6 @@ export async function createSampleData(prisma: PrismaClient) {
     data: {
       date: daysAgo(1),
       vehicleId: vehicle3.id,
-      driverId: driverYamada.id,
       destination: "資材センター",
       endMeter: 5310,
       note: "",
@@ -77,7 +65,6 @@ export async function createSampleData(prisma: PrismaClient) {
     data: {
       date: daysAgo(0),
       vehicleId: vehicle1.id,
-      driverId: driverYamada.id,
       destination: "取引先B社\n取引先C社",
       endMeter: 12305,
       note: null,

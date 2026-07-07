@@ -30,32 +30,19 @@ model Vehicle {
   @@map("vehicles")
 }
 
-model Driver {
-  id        Int      @id @default(autoincrement())
-  name      String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  logs VehicleLog[]
-
-  @@map("drivers")
-}
-
 model VehicleLog {
   id          Int      @id @default(autoincrement())
   date        DateTime
   vehicleId   Int
-  driverId    Int
   destination String
   endMeter    Float
+  fuelLocation String?
+  fuelAmount   Float?
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
-  driver  Driver  @relation(fields: [driverId], references: [id])
 
   @@map("vehicle_logs")
 }
