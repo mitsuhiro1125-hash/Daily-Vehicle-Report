@@ -83,6 +83,9 @@ export default function GeppoPage() {
     dayGroup: DayGroup;
   } | null>(null);
 
+  // 車両ごとの表示（アコーディオン）の開閉状態
+  const [expandedVehicles, setExpandedVehicles] = useState<Set<number>>(new Set());
+
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [bannerWarning, setBannerWarning] = useState<string | null>(null);
 
@@ -110,6 +113,28 @@ export default function GeppoPage() {
     loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearMonth, vehicleFilter]);
+
+  // 車両を1台に絞り込んだときはその車両を自動的に開き、
+  // 「すべて」に戻したときはいったん全部たたんだ状態に戻す
+  useEffect(() => {
+    if (vehicleFilter) {
+      setExpandedVehicles(new Set([Number(vehicleFilter)]));
+    } else {
+      setExpandedVehicles(new Set());
+    }
+  }, [vehicleFilter, yearMonth]);
+
+  function toggleVehicleExpanded(vehicleId: number) {
+    setExpandedVehicles((prev) => {
+      const next = new Set(prev);
+      if (next.has(vehicleId)) {
+        next.delete(vehicleId);
+      } else {
+        next.add(vehicleId);
+      }
+      return next;
+    });
+  }
 
   // 車両ごとにグループ化し、さらに同じ日付の記録を1つにまとめる
   // （同日に2回以上入力された場合、月報では1行にまとめて表示するため）
@@ -315,15 +340,35 @@ export default function GeppoPage() {
         <p className="text-gray-500">該当する記録がありません</p>
       ) : (
         <div className="flex flex-col gap-8">
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const isExpanded = expandedVehicles.has(group.vehicleId);
+            const enteredDays = group.dayGroups.filter((d) => d.logs.length > 0).length;
+            return (
             <section key={group.vehicleId}>
-              <h2 className="text-lg font-bold text-gray-800 mb-3">
-                {group.vehicleName}
-                <span className="text-sm font-normal text-gray-400 ml-2">
-                  {group.vehicleNumber}
+              <button
+                type="button"
+                onClick={() => toggleVehicleExpanded(group.vehicleId)}
+                className="w-full flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-3 text-left"
+              >
+                <h2 className="text-lg font-bold text-gray-800">
+                  {group.vehicleName}
+                  <span className="text-sm font-normal text-gray-400 ml-2">
+                    {group.vehicleNumber}
+                  </span>
+                  <span className="text-sm font-normal text-gray-400 ml-2">
+                    （入力あり：{enteredDays}日）
+                  </span>
+                </h2>
+                <span
+                  className={`shrink-0 text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                >
+                  ▼
                 </span>
-              </h2>
+              </button>
 
+              {isExpanded && (
+                <>
               {/* PC向け：テーブル表示 */}
               <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
                 <table className="w-full text-sm">
@@ -476,8 +521,11 @@ export default function GeppoPage() {
                   </div>
                 ))}
               </div>
+                </>
+              )}
             </section>
-          ))}
+            );
+          })}
         </div>
       )}
 

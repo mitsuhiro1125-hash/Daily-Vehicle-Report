@@ -9,4 +9,12 @@ export async function hashText(text: string): Promise<string> {
     .join("");
 }
 
+// アプリ全体の合言葉（クラウド公開時のみ有効）
 export const AUTH_COOKIE_NAME = "vr_auth";
+
+// 車両管理（管理者用機能）専用の合言葉
+// 環境変数 ADMIN_PASSWORD が設定されていればそちらを使い、なければ既定値を使う
+export const ADMIN_AUTH_COOKIE_NAME = "vr_admin_auth";
+export function getAdminPassword(): string {
+  return process.env.ADMIN_PASSWORD || "mIck3216";
+}

@@ -21,12 +21,50 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function VehiclesPage() {
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VehicleDTO | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function checkAuth() {
+      const res = await fetch("/api/admin-login");
+      const data = await res.json();
+      setAuthenticated(!!data.authenticated);
+      setCheckingAuth(false);
+    }
+    checkAuth();
+  }, []);
+
+  async function handleAuthSubmit(e: FormEvent) {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAuthError(data.error ?? "パスワードが正しくありません");
+        return;
+      }
+      setAuthenticated(true);
+      setAdminPassword("");
+    } finally {
+      setAuthSubmitting(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -110,6 +148,47 @@ export default function VehiclesPage() {
   }
 
   const sorted = [...vehicles].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+
+  if (checkingAuth) {
+    return (
+      <main className="flex-1 px-6 py-6">
+        <PageHeader title="車両管理" />
+        <p className="text-gray-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="flex-1 px-6 py-6">
+        <PageHeader title="車両管理" />
+        <form onSubmit={handleAuthSubmit} className="card max-w-sm mx-auto flex flex-col gap-5">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">管理者パスワード</h2>
+            <p className="text-gray-500 text-sm">
+              車両管理には管理者パスワードが必要です。
+            </p>
+          </div>
+          {authError && (
+            <p className="text-red-600 font-bold bg-red-50 border-2 border-red-300 rounded-lg px-4 py-2">
+              {authError}
+            </p>
+          )}
+          <input
+            type="password"
+            autoFocus
+            className="input-field"
+            placeholder="パスワード"
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+          />
+          <button type="submit" disabled={authSubmitting} className="btn-primary">
+            {authSubmitting ? "確認中..." : "入る"}
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 px-6 py-6 pb-16">
