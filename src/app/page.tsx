@@ -1,7 +1,12 @@
 import Link from "next/link";
 
 // トップ画面：各機能への入口をまとめたメニュー画面
-export default function HomePage() {
+// 日報登録後にここへ戻ってきたとき、?registered=1 が付いていれば完了メッセージを表示する
+export default function HomePage({
+  searchParams,
+}: {
+  searchParams: { registered?: string; warning?: string };
+}) {
   const menuItems = [
     {
       href: "/nippo",
@@ -23,8 +28,22 @@ export default function HomePage() {
     },
   ];
 
+  const showRegisteredBanner = searchParams.registered === "1";
+  const warningMessage = searchParams.warning;
+
   return (
     <main className="flex-1 flex flex-col justify-center px-6 py-10">
+      {showRegisteredBanner && (
+        <div className="mb-6 rounded-xl bg-emerald-50 border-2 border-emerald-400 text-emerald-800 font-bold text-lg px-5 py-4 text-center">
+          ✓ 入力されました
+          {warningMessage && (
+            <div className="mt-2 text-amber-700 font-normal text-base">
+              ⚠ {warningMessage}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="text-center mb-10">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">
           車両月報作成アプリ

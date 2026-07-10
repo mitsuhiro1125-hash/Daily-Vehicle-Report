@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import { todayInputValue, joinDestinations } from "@/lib/utils";
 import type { VehicleDTO } from "@/lib/types";
@@ -11,6 +12,7 @@ type FormErrors = Partial<Record<"date" | "vehicleId" | "destination" | "endMete
 const LAST_VEHICLE_STORAGE_KEY = "vehicle-report:lastVehicleId";
 
 export default function NippoPage() {
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [loadingMasters, setLoadingMasters] = useState(true);
 
@@ -25,8 +27,6 @@ export default function NippoPage() {
   const [lastMeter, setLastMeter] = useState<number | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // 車両マスタを読み込み、この端末で前回選ばれていた車両があれば自動で選択する
@@ -82,11 +82,9 @@ export default function NippoPage() {
     setDestinations((prev) => prev.map((d, i) => (i === index ? value : d)));
   }
 
-  function clearForm(keepVehicle: boolean) {
+  function clearForm() {
     setDate(todayInputValue());
-    if (!keepVehicle) {
-      setVehicleId("");
-    }
+    setVehicleId("");
     setDestinations([""]);
     setEndMeter("");
     setFuelLocation("");
@@ -126,8 +124,6 @@ export default function NippoPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setSuccessMessage(null);
-    setWarningMessage(null);
     setSubmitError(null);
 
     if (!validate()) return;
@@ -164,14 +160,11 @@ export default function NippoPage() {
       }
 
       const data = await res.json();
-      setSuccessMessage("登録しました");
-      if (data.warning) setWarningMessage(data.warning);
 
-      // 同じ車両で続けて入力しやすいよう、車両の選択は維持してクリアする
-      const keptVehicleId = vehicleId;
-      clearForm(true);
-      setVehicleId(keptVehicleId);
-      fetchLastMeter(keptVehicleId);
+      // 登録が完了したらTOP画面に戻り、そこで完了メッセージを表示する
+      const params = new URLSearchParams({ registered: "1" });
+      if (data.warning) params.set("warning", data.warning);
+      router.push(`/?${params.toString()}`);
     } finally {
       setSubmitting(false);
     }
@@ -197,16 +190,6 @@ export default function NippoPage() {
     <main className="flex-1 px-6 py-6 pb-16">
       <PageHeader title="日報を入力する" />
 
-      {successMessage && (
-        <div className="mb-5 rounded-xl bg-emerald-50 border-2 border-emerald-400 text-emerald-800 font-bold text-lg px-5 py-4">
-          ✓ {successMessage}
-          {warningMessage && (
-            <div className="mt-2 text-amber-700 font-normal text-base">
-              ⚠ {warningMessage}
-            </div>
-          )}
-        </div>
-      )}
       {submitError && (
         <div className="mb-5 rounded-xl bg-red-50 border-2 border-red-400 text-red-700 font-bold px-5 py-4">
           {submitError}
@@ -364,7 +347,7 @@ export default function NippoPage() {
           </button>
           <button
             type="button"
-            onClick={() => clearForm(false)}
+            onClick={() => clearForm()}
             className="btn-secondary flex-1"
           >
             入力をクリア
