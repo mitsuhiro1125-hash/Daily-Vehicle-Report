@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #f8fafc; /* 白〜薄いグレーの業務アプリらしい背景 */
+  color: #1f2937;
+}
+
+/* スマホでの二重タップ拡大を防ぎつつ、押しやすいタップ領域を確保 */
+button,
+a {
+  touch-action: manipulation;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-600 text-white text-lg font-bold rounded-xl px-6 py-4 shadow-sm active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-white text-gray-700 text-lg font-bold rounded-xl px-6 py-4 border-2 border-gray-300 active:scale-[0.98] transition;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white text-base font-bold rounded-lg px-4 py-2 active:scale-[0.98] transition;
+  }
+  .btn-small {
+    @apply text-base font-bold rounded-lg px-4 py-2 border-2 active:scale-[0.98] transition;
+  }
+  .input-field {
+    @apply w-full text-lg rounded-xl border-2 border-gray-300 px-4 py-3 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100;
+  }
+  .label-text {
+    @apply block text-base font-bold text-gray-700 mb-2;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-200 p-5;
+  }
+}

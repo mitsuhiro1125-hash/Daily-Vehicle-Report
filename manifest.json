@@ -1,0 +1,48 @@
+// 本番環境（Vercelへのデプロイ）専用の Prisma スキーマ
+//
+// ローカル開発（自分のパソコンの中）では prisma/schema.prisma（SQLite）を使い、
+// クラウド公開（Vercel）ではこちらの schema.production.prisma（PostgreSQL）を使います。
+// モデル定義（テーブルの内容）は必ず両方のファイルで一致させてください。
+//
+// Vercelの「Storage」タブから「Prisma Postgres」を接続すると、
+// DATABASE_URL が自動的に設定されます（手入力は不要です）。
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Vehicle {
+  id        Int      @id @default(autoincrement())
+  name      String
+  number    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs VehicleLog[]
+
+  @@map("vehicles")
+}
+
+model VehicleLog {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  vehicleId   Int
+  destination String
+  endMeter    Float
+  fuelLocation String?
+  fuelAmount   Float?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@map("vehicle_logs")
+}
