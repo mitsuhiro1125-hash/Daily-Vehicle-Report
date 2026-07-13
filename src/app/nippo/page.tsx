@@ -28,34 +28,50 @@ export default function NippoPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 車両マスタを読み込み、この端末で前回選ばれていた車両があれば自動で選択する
   useEffect(() => {
     async function load() {
       setLoadingMasters(true);
-      const res = await fetch("/api/vehicles");
-      const data: VehicleDTO[] = await res.json();
-      setVehicles(data);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/vehicles");
+        if (!res.ok) throw new Error("failed to load vehicles");
+        const data: VehicleDTO[] = await res.json();
+        setVehicles(data);
 
-      const remembered = window.localStorage.getItem(LAST_VEHICLE_STORAGE_KEY);
-      if (remembered && data.some((v) => String(v.id) === remembered)) {
-        setVehicleId(remembered);
+        const remembered = window.localStorage.getItem(LAST_VEHICLE_STORAGE_KEY);
+        if (remembered && data.some((v) => String(v.id) === remembered)) {
+          setVehicleId(remembered);
+        }
+      } catch {
+        setLoadError(
+          "車両の一覧を読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
+        );
+      } finally {
+        setLoadingMasters(false);
       }
-      setLoadingMasters(false);
     }
     load();
   }, []);
 
   // 選択中の車両が変わったら、前回の終業時メーターを取得して参考表示する
+  // （取得に失敗しても入力自体は継続できるよう、エラーは画面をブロックしない）
   const fetchLastMeter = useCallback(async (vId: string) => {
     if (!vId) {
       setLastMeter(null);
       return;
     }
-    const res = await fetch(`/api/logs/last-meter?vehicleId=${vId}`);
-    if (res.ok) {
-      const data = await res.json();
-      setLastMeter(typeof data.lastMeter === "number" ? data.lastMeter : null);
+    try {
+      const res = await fetch(`/api/logs/last-meter?vehicleId=${vId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLastMeter(typeof data.lastMeter === "number" ? data.lastMeter : null);
+      }
+    } catch {
+      setLastMeter(null);
     }
   }, []);
 
@@ -145,7 +161,7 @@ export default function NippoPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.errors) {
           const newErrors: FormErrors = {};
           for (const err of data.errors as { field: string; message: string }[]) {
@@ -165,7 +181,10 @@ export default function NippoPage() {
       const params = new URLSearchParams({ registered: "1" });
       if (data.warning) params.set("warning", data.warning);
       router.push(`/?${params.toString()}`);
-    } finally {
+    } catch {
+      setSubmitError(
+        "通信エラーが発生しました。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
+      );
       setSubmitting(false);
     }
   }
@@ -182,6 +201,20 @@ export default function NippoPage() {
       <main className="flex-1 px-6 py-6">
         <PageHeader title="日報を入力する" />
         <p className="text-gray-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className="flex-1 px-6 py-6">
+        <PageHeader title="日報を入力する" />
+        <div className="card">
+          <p className="text-red-600 font-bold mb-4">{loadError}</p>
+          <button onClick={() => window.location.reload()} className="btn-primary">
+            もう一度読み込む
+          </button>
+        </div>
       </main>
     );
   }
@@ -347,13 +380,42 @@ export default function NippoPage() {
           </button>
           <button
             type="button"
-            onClick={() => clearForm()}
+            onClick={() => setShowClearConfirm(true)}
             className="btn-secondary flex-1"
           >
             入力をクリア
           </button>
         </div>
       </form>
+
+      {/* クリア確認ダイアログ */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center px-6 z-50">
+          <div className="card max-w-sm w-full">
+            <p className="text-lg font-bold text-gray-800 mb-2">
+              入力中の内容をクリアしますか？
+            </p>
+            <p className="text-gray-500 mb-4">この操作は取り消せません。</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  clearForm();
+                  setShowClearConfirm(false);
+                }}
+                className="btn-danger flex-1"
+              >
+                クリアする
+              </button>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="btn-secondary flex-1"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 text-center">
         <a href="/geppo" className="text-brand-600 font-bold underline underline-offset-4">

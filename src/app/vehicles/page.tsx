@@ -20,8 +20,12 @@ const EMPTY_FORM: FormState = {
   isActive: true,
 };
 
+const NETWORK_ERROR_MESSAGE =
+  "通信エラーが発生しました。電波・Wi-Fiの状態を確認して、もう一度お試しください。";
+
 export default function VehiclesPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authCheckError, setAuthCheckError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -29,17 +33,27 @@ export default function VehiclesPage() {
 
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VehicleDTO | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [reviveError, setReviveError] = useState<string | null>(null);
 
   useEffect(() => {
     async function checkAuth() {
-      const res = await fetch("/api/admin-login");
-      const data = await res.json();
-      setAuthenticated(!!data.authenticated);
-      setCheckingAuth(false);
+      setAuthCheckError(null);
+      try {
+        const res = await fetch("/api/admin-login");
+        if (!res.ok) throw new Error("failed");
+        const data = await res.json();
+        setAuthenticated(!!data.authenticated);
+      } catch {
+        setAuthCheckError(NETWORK_ERROR_MESSAGE);
+      } finally {
+        setCheckingAuth(false);
+      }
     }
     checkAuth();
   }, []);
@@ -61,6 +75,8 @@ export default function VehiclesPage() {
       }
       setAuthenticated(true);
       setAdminPassword("");
+    } catch {
+      setAuthError(NETWORK_ERROR_MESSAGE);
     } finally {
       setAuthSubmitting(false);
     }
@@ -68,15 +84,24 @@ export default function VehiclesPage() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch("/api/vehicles?includeInactive=1");
-    const data: VehicleDTO[] = await res.json();
-    setVehicles(data);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/vehicles?includeInactive=1");
+      if (!res.ok) throw new Error("failed");
+      const data: VehicleDTO[] = await res.json();
+      setVehicles(data);
+    } catch {
+      setLoadError(NETWORK_ERROR_MESSAGE);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (authenticated) {
+      load();
+    }
+  }, [authenticated]);
 
   function startEdit(v: VehicleDTO) {
     setForm({
@@ -87,6 +112,7 @@ export default function VehiclesPage() {
       isActive: v.isActive,
     });
     setErrorMessage(null);
+    setInfoMessage(null);
   }
 
   function resetForm() {
@@ -97,6 +123,7 @@ export default function VehiclesPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
+    setInfoMessage(null);
 
     if (!form.name.trim() || !form.number.trim()) {
       setErrorMessage("車両名と車両番号は必須です");
@@ -110,50 +137,105 @@ export default function VehiclesPage() {
       isActive: form.isActive,
     };
 
-    const res = form.id
-      ? await fetch(`/api/vehicles/${form.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-      : await fetch("/api/vehicles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    try {
+      const res = form.id
+        ? await fetch(`/api/vehicles/${form.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/vehicles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
 
-    if (!res.ok) {
-      const data = await res.json();
-      setErrorMessage(data.error ?? "保存に失敗しました");
-      return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrorMessage(data.error ?? "保存に失敗しました");
+        return;
+      }
+
+      resetForm();
+      load();
+    } catch {
+      setErrorMessage(NETWORK_ERROR_MESSAGE);
     }
-
-    resetForm();
-    load();
   }
 
   async function handleDeleteConfirmed() {
     if (!deleteTarget) return;
     setDeleteError(null);
-    const res = await fetch(`/api/vehicles/${deleteTarget.id}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setDeleteError(data.error ?? "削除に失敗しました");
-      return;
+    try {
+      const res = await fetch(`/api/vehicles/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setDeleteError(data.error ?? "削除に失敗しました");
+        return;
+      }
+
+      setDeleteTarget(null);
+      if (data.hidden) {
+        setInfoMessage(data.message ?? "利用記録があるため、非表示（使用停止）にしました。");
+      } else {
+        setInfoMessage(null);
+      }
+      load();
+    } catch {
+      setDeleteError(NETWORK_ERROR_MESSAGE);
     }
-    setDeleteTarget(null);
-    load();
+  }
+
+  async function handleRevive(v: VehicleDTO) {
+    setReviveError(null);
+    try {
+      const res = await fetch(`/api/vehicles/${v.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: v.name,
+          number: v.number,
+          sortOrder: v.sortOrder,
+          isActive: true,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setReviveError(data.error ?? "復活に失敗しました");
+        return;
+      }
+      load();
+    } catch {
+      setReviveError(NETWORK_ERROR_MESSAGE);
+    }
   }
 
   const sorted = [...vehicles].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const activeVehicles = sorted.filter((v) => v.isActive);
+  const inactiveVehicles = sorted.filter((v) => !v.isActive);
 
   if (checkingAuth) {
     return (
       <main className="flex-1 px-6 py-6">
         <PageHeader title="車両管理" />
         <p className="text-gray-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  if (authCheckError) {
+    return (
+      <main className="flex-1 px-6 py-6">
+        <PageHeader title="車両管理" />
+        <div className="card">
+          <p className="text-red-600 font-bold mb-4">{authCheckError}</p>
+          <button onClick={() => window.location.reload()} className="btn-primary">
+            もう一度読み込む
+          </button>
+        </div>
       </main>
     );
   }
@@ -193,6 +275,12 @@ export default function VehiclesPage() {
   return (
     <main className="flex-1 px-6 py-6 pb-16">
       <PageHeader title="車両管理" />
+
+      {infoMessage && (
+        <div className="mb-5 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-800 font-bold px-5 py-4">
+          {infoMessage}
+        </div>
+      )}
 
       {/* 登録・編集フォーム */}
       <form onSubmit={handleSubmit} className="card flex flex-col gap-5 mb-8">
@@ -267,21 +355,21 @@ export default function VehiclesPage() {
       <h2 className="text-lg font-bold text-gray-700 mb-3">登録済みの車両</h2>
       {loading ? (
         <p className="text-gray-500">読み込み中...</p>
-      ) : sorted.length === 0 ? (
+      ) : loadError ? (
+        <div className="card">
+          <p className="text-red-600 font-bold mb-4">{loadError}</p>
+          <button onClick={load} className="btn-primary">
+            もう一度読み込む
+          </button>
+        </div>
+      ) : activeVehicles.length === 0 ? (
         <p className="text-gray-500">まだ車両が登録されていません</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {sorted.map((v) => (
+          {activeVehicles.map((v) => (
             <div key={v.id} className="card flex items-center justify-between gap-4">
               <div>
-                <div className="font-bold text-lg text-gray-800">
-                  {v.name}
-                  {!v.isActive && (
-                    <span className="ml-2 text-sm font-bold text-gray-400">
-                      （使用停止）
-                    </span>
-                  )}
-                </div>
+                <div className="font-bold text-lg text-gray-800">{v.name}</div>
                 <div className="text-gray-500 text-sm">{v.number}</div>
               </div>
               <div className="flex gap-2 shrink-0">
@@ -306,6 +394,54 @@ export default function VehiclesPage() {
         </div>
       )}
 
+      {/* 非表示の車両（復活） */}
+      {!loading && !loadError && inactiveVehicles.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-base font-bold text-gray-500 mb-3">
+            非表示の車両（使用停止中）
+          </h2>
+          {reviveError && (
+            <p className="text-red-600 font-bold mb-3">{reviveError}</p>
+          )}
+          <div className="flex flex-col gap-2">
+            {inactiveVehicles.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+              >
+                <div>
+                  <div className="font-bold text-gray-600 text-sm">{v.name}</div>
+                  <div className="text-gray-400 text-xs">{v.number}</div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => handleRevive(v)}
+                    className="btn-small border-emerald-500 text-emerald-600"
+                  >
+                    復活させる
+                  </button>
+                  <button
+                    onClick={() => startEdit(v)}
+                    className="btn-small border-brand-500 text-brand-600"
+                  >
+                    編集
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeleteTarget(v);
+                      setDeleteError(null);
+                    }}
+                    className="btn-small border-red-400 text-red-600"
+                  >
+                    削除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 削除確認ダイアログ */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center px-6 z-50">
@@ -313,7 +449,9 @@ export default function VehiclesPage() {
             <p className="text-lg font-bold text-gray-800 mb-2">
               「{deleteTarget.name}」を削除しますか？
             </p>
-            <p className="text-gray-500 mb-4">この操作は取り消せません。</p>
+            <p className="text-gray-500 mb-4">
+              利用記録がある場合は削除されず、代わりに非表示（使用停止）になります。
+            </p>
             {deleteError && (
               <p className="text-red-600 font-bold mb-4">{deleteError}</p>
             )}

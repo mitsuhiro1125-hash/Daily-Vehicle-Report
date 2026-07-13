@@ -52,8 +52,8 @@ export async function PUT(
 }
 
 // DELETE /api/vehicles/:id : 車両を削除
-// 利用記録が既に存在する場合は削除できない（データ不整合防止）ため、
-// 代わりに「使用停止」にすることを促すエラーを返す
+// 利用記録が既に存在する場合は、データ不整合防止のため削除の代わりに
+// 「使用停止（非表示）」に切り替える
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -65,13 +65,23 @@ export async function DELETE(
 
   const usageCount = await prisma.vehicleLog.count({ where: { vehicleId: id } });
   if (usageCount > 0) {
-    return NextResponse.json(
-      {
-        error:
-          "この車両は利用記録があるため削除できません。「使用停止」に変更してください。",
-      },
-      { status: 409 }
-    );
+    try {
+      const vehicle = await prisma.vehicle.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      return NextResponse.json({
+        hidden: true,
+        vehicle,
+        message:
+          "この車両には利用記録があるため削除できません。代わりに「非表示（使用停止）」にしました。",
+      });
+    } catch {
+      return NextResponse.json(
+        { error: "対象の車両が見つかりません" },
+        { status: 404 }
+      );
+    }
   }
 
   try {

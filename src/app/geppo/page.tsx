@@ -67,6 +67,8 @@ export default function GeppoPage() {
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [logs, setLogs] = useState<VehicleLogDTO[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [mastersError, setMastersError] = useState<string | null>(null);
 
   const [yearMonth, setYearMonth] = useState(currentYearMonth());
   const [vehicleFilter, setVehicleFilter] = useState<string>("");
@@ -91,22 +93,39 @@ export default function GeppoPage() {
 
   useEffect(() => {
     async function loadMasters() {
-      const res = await fetch("/api/vehicles?includeInactive=1");
-      setVehicles(await res.json());
+      setMastersError(null);
+      try {
+        const res = await fetch("/api/vehicles?includeInactive=1");
+        if (!res.ok) throw new Error("failed");
+        setVehicles(await res.json());
+      } catch {
+        setMastersError(
+          "車両の一覧を読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
+        );
+      }
     }
     loadMasters();
   }, []);
 
   async function loadLogs() {
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set("yearMonth", yearMonth);
-    if (vehicleFilter) params.set("vehicleId", vehicleFilter);
+    setLoadError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("yearMonth", yearMonth);
+      if (vehicleFilter) params.set("vehicleId", vehicleFilter);
 
-    const res = await fetch(`/api/logs?${params.toString()}`);
-    const data: VehicleLogDTO[] = await res.json();
-    setLogs(data);
-    setLoading(false);
+      const res = await fetch(`/api/logs?${params.toString()}`);
+      if (!res.ok) throw new Error("failed");
+      const data: VehicleLogDTO[] = await res.json();
+      setLogs(data);
+    } catch {
+      setLoadError(
+        "月報データを読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -264,6 +283,10 @@ export default function GeppoPage() {
       setEditForm(null);
       setBreakdownGroup(null);
       loadLogs();
+    } catch {
+      setEditErrors({
+        general: "通信エラーが発生しました。電波・Wi-Fiの状態を確認して、もう一度お試しください。",
+      });
     } finally {
       setEditSubmitting(false);
     }
@@ -272,17 +295,21 @@ export default function GeppoPage() {
   async function handleDeleteConfirmed() {
     if (!deleteTarget) return;
     setDeleteError(null);
-    const res = await fetch(`/api/logs/${deleteTarget.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = await res.json();
-      setDeleteError(data.error ?? "削除に失敗しました");
-      return;
+    try {
+      const res = await fetch(`/api/logs/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDeleteError(data.error ?? "削除に失敗しました");
+        return;
+      }
+      setDeleteTarget(null);
+      setBreakdownGroup(null);
+      setBannerMessage("削除しました");
+      setBannerWarning(null);
+      loadLogs();
+    } catch {
+      setDeleteError("通信エラーが発生しました。電波・Wi-Fiの状態を確認して、もう一度お試しください。");
     }
-    setDeleteTarget(null);
-    setBreakdownGroup(null);
-    setBannerMessage("削除しました");
-    setBannerWarning(null);
-    loadLogs();
   }
 
   return (
@@ -297,6 +324,12 @@ export default function GeppoPage() {
               ⚠ {bannerWarning}
             </div>
           )}
+        </div>
+      )}
+
+      {mastersError && (
+        <div className="mb-5 rounded-xl bg-red-50 border-2 border-red-400 text-red-700 font-bold px-5 py-4">
+          {mastersError}
         </div>
       )}
 
@@ -336,6 +369,13 @@ export default function GeppoPage() {
 
       {loading ? (
         <p className="text-gray-500">読み込み中...</p>
+      ) : loadError ? (
+        <div className="card">
+          <p className="text-red-600 font-bold mb-4">{loadError}</p>
+          <button onClick={loadLogs} className="btn-primary">
+            もう一度読み込む
+          </button>
+        </div>
       ) : groups.length === 0 ? (
         <p className="text-gray-500">該当する記録がありません</p>
       ) : (
