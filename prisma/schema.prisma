@@ -34,7 +34,7 @@ model VehicleLog {
   destination String
   endMeter    Float // 終業時メーター（km）
   fuelLocation String? // 給油場所（任意）
-  fuelAmount   Float?  // 給油量（任意・リットル）
+  fuelAmount   Float?  // 給油量（L・任意）
   note        String? // 備考（任意）
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
