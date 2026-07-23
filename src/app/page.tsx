@@ -23,7 +23,7 @@ export default function HomePage({
     {
       href: "/vehicles",
       label: "車両管理",
-      desc: "車両の登録・編集・削除",
+      desc: "車両・所属の登録・編集・削除",
       color: "bg-slate-600",
     },
   ];

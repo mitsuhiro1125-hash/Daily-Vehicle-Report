@@ -13,14 +13,39 @@ function daysAgo(n: number): Date {
 }
 
 export async function createSampleData(prisma: PrismaClient) {
+  const dept1 = await prisma.department.create({
+    data: { name: "本社", sortOrder: 1, isActive: true },
+  });
+  const dept2 = await prisma.department.create({
+    data: { name: "西営業所", sortOrder: 2, isActive: true },
+  });
+
   const vehicle1 = await prisma.vehicle.create({
-    data: { name: "営業車1号", number: "品川300 あ 12-34", sortOrder: 1, isActive: true },
+    data: {
+      name: "営業車1号",
+      number: "品川300 あ 12-34",
+      departmentId: dept1.id,
+      sortOrder: 1,
+      isActive: true,
+    },
   });
   const vehicle2 = await prisma.vehicle.create({
-    data: { name: "営業車2号", number: "品川300 あ 56-78", sortOrder: 2, isActive: true },
+    data: {
+      name: "営業車2号",
+      number: "品川300 あ 56-78",
+      departmentId: dept1.id,
+      sortOrder: 2,
+      isActive: true,
+    },
   });
   const vehicle3 = await prisma.vehicle.create({
-    data: { name: "軽トラック1号", number: "品川480 い 90-12", sortOrder: 3, isActive: true },
+    data: {
+      name: "軽トラック1号",
+      number: "品川480 い 90-12",
+      departmentId: dept2.id,
+      sortOrder: 3,
+      isActive: true,
+    },
   });
 
   await prisma.vehicleLog.create({
@@ -29,8 +54,6 @@ export async function createSampleData(prisma: PrismaClient) {
       vehicleId: vehicle1.id,
       destination: "株式会社サンプル商事\n本社倉庫",
       endMeter: 12050,
-      fuelLocation: "ENEOS 目黒店",
-      fuelAmount: 32.5,
       note: "納品対応",
     },
   });

@@ -6,7 +6,9 @@ import PageHeader from "@/components/PageHeader";
 import { todayInputValue, joinDestinations } from "@/lib/utils";
 import type { VehicleDTO } from "@/lib/types";
 
-type FormErrors = Partial<Record<"date" | "vehicleId" | "destination" | "endMeter" | "fuelAmount", string>>;
+type FormErrors = Partial<
+  Record<"date" | "vehicleId" | "destination" | "endMeter" | "fuelAmount", string>
+>;
 
 // この端末（スマホ・パソコン）に、最後に選んだ車両を覚えておくためのキー
 const LAST_VEHICLE_STORAGE_KEY = "vehicle-report:lastVehicleId";
@@ -15,6 +17,7 @@ export default function NippoPage() {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
   const [loadingMasters, setLoadingMasters] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [date, setDate] = useState(todayInputValue());
   const [vehicleId, setVehicleId] = useState<string>("");
@@ -29,7 +32,6 @@ export default function NippoPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 車両マスタを読み込み、この端末で前回選ばれていた車両があれば自動で選択する
   useEffect(() => {
@@ -196,6 +198,19 @@ export default function NippoPage() {
     !Number.isNaN(enteredMeterNum) &&
     enteredMeterNum < lastMeter;
 
+  // 所属ごとにグループ化した車両一覧（プルダウンのoptgroup表示用）
+  const groupedVehicles = (() => {
+    const groups = new Map<string, { label: string; vehicles: VehicleDTO[] }>();
+    for (const v of vehicles) {
+      const key = v.department ? `dept-${v.department.id}` : "none";
+      const label = v.department ? v.department.name : "未分類";
+      const g = groups.get(key) ?? { label, vehicles: [] as VehicleDTO[] };
+      g.vehicles.push(v);
+      groups.set(key, g);
+    }
+    return Array.from(groups.values());
+  })();
+
   if (loadingMasters) {
     return (
       <main className="flex-1 px-6 py-6">
@@ -251,10 +266,14 @@ export default function NippoPage() {
             onChange={(e) => handleVehicleChange(e.target.value)}
           >
             <option value="">選択してください</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
+            {groupedVehicles.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {errors.vehicleId && (

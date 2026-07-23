@@ -20,6 +20,7 @@ import {
 // ・実際に入力された日だけでなく、月の全日を出力し、入力のない日は空欄の行にする
 // ・給油金額は入力画面には存在しない列だが、Excel側で手入力できるよう常に空欄で出力する
 // ・備考は登録された内容をそのまま出力する
+// ・同じ日に複数回入力がある場合は、1日1行にまとめる
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const yearMonth = sp.get("yearMonth") || currentYearMonth();
@@ -63,12 +64,6 @@ export async function GET(request: NextRequest) {
     }
 
     // 同じ日に複数回入力がある場合は、1日1行にまとめる
-    // ・訪問先：すべての訪問先をつなげる
-    // ・終業時メーター：その日の最後（一番大きい値）を採用
-    // ・給油場所：入力があるものをすべてつなげる
-    // ・給油量：入力があるものの合計
-    // ・給油金額：入力画面がないため常に空欄
-    // ・備考：入力があるものをすべてつなげる
     const allDestinations = logsOnDay.flatMap((log) =>
       log.destination.split("\n").map((s) => s.trim()).filter((s) => s.length > 0)
     );

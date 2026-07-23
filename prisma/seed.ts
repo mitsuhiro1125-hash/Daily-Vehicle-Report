@@ -10,9 +10,10 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("シードデータの投入を開始します...");
 
-  // 既存データを一旦クリア（順序に注意：外部キー制約のため logs から削除）
+  // 既存データを一旦クリア（順序に注意：外部キー制約のため logs → vehicles → departments）
   await prisma.vehicleLog.deleteMany();
   await prisma.vehicle.deleteMany();
+  await prisma.department.deleteMany();
 
   await createSampleData(prisma);
 

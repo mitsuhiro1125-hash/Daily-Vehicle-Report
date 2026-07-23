@@ -6,7 +6,7 @@ function parseId(idParam: string): number | null {
   return Number.isInteger(id) ? id : null;
 }
 
-// PUT /api/vehicles/:id : 車両情報を更新
+// PUT /api/departments/:id : 所属情報を更新
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -17,48 +17,35 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { name, number, departmentId, sortOrder, isActive } = body ?? {};
+  const { name, sortOrder, isActive } = body ?? {};
 
   if (!name || typeof name !== "string" || name.trim() === "") {
     return NextResponse.json(
-      { error: "車両名は必須です" },
-      { status: 400 }
-    );
-  }
-  if (!number || typeof number !== "string" || number.trim() === "") {
-    return NextResponse.json(
-      { error: "車両番号は必須です" },
+      { error: "所属名は必須です" },
       { status: 400 }
     );
   }
 
   try {
-    const vehicle = await prisma.vehicle.update({
+    const department = await prisma.department.update({
       where: { id },
       data: {
         name: name.trim(),
-        number: number.trim(),
-        departmentId:
-          typeof departmentId === "number" && Number.isInteger(departmentId)
-            ? departmentId
-            : null,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
         isActive: typeof isActive === "boolean" ? isActive : true,
       },
-      include: { department: true },
     });
-    return NextResponse.json(vehicle);
+    return NextResponse.json(department);
   } catch {
     return NextResponse.json(
-      { error: "対象の車両が見つかりません" },
+      { error: "対象の所属が見つかりません" },
       { status: 404 }
     );
   }
 }
 
-// DELETE /api/vehicles/:id : 車両を削除
-// 利用記録が既に存在する場合は、データ不整合防止のため削除の代わりに
-// 「使用停止（非表示）」に切り替える
+// DELETE /api/departments/:id : 所属を削除
+// 所属している車両が既に存在する場合は、削除の代わりに使用停止（非表示）にする
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -68,33 +55,33 @@ export async function DELETE(
     return NextResponse.json({ error: "不正なIDです" }, { status: 400 });
   }
 
-  const usageCount = await prisma.vehicleLog.count({ where: { vehicleId: id } });
+  const usageCount = await prisma.vehicle.count({ where: { departmentId: id } });
   if (usageCount > 0) {
     try {
-      const vehicle = await prisma.vehicle.update({
+      const department = await prisma.department.update({
         where: { id },
         data: { isActive: false },
       });
       return NextResponse.json({
         hidden: true,
-        vehicle,
+        department,
         message:
-          "この車両には利用記録があるため削除できません。代わりに「非表示（使用停止）」にしました。",
+          "この所属には車両が紐づいているため削除できません。代わりに「非表示（使用停止）」にしました。",
       });
     } catch {
       return NextResponse.json(
-        { error: "対象の車両が見つかりません" },
+        { error: "対象の所属が見つかりません" },
         { status: 404 }
       );
     }
   }
 
   try {
-    await prisma.vehicle.delete({ where: { id } });
+    await prisma.department.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(
-      { error: "対象の車両が見つかりません" },
+      { error: "対象の所属が見つかりません" },
       { status: 404 }
     );
   }

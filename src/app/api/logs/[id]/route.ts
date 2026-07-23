@@ -47,28 +47,24 @@ function validateLogInput(body: unknown): {
     });
   }
 
-  // 給油場所・給油量は任意項目
-  const fuelLocation =
-    typeof b.fuelLocation === "string" && b.fuelLocation.trim() !== ""
-      ? b.fuelLocation.trim()
-      : null;
-
   let fuelAmount: number | null = null;
   if (b.fuelAmount !== undefined && b.fuelAmount !== null && b.fuelAmount !== "") {
-    const n = Number(b.fuelAmount);
-    if (Number.isNaN(n) || n < 0) {
+    fuelAmount = Number(b.fuelAmount);
+    if (Number.isNaN(fuelAmount) || fuelAmount < 0) {
       errors.push({
         field: "fuelAmount",
         message: "給油量は0以上の数値で入力してください",
       });
-    } else {
-      fuelAmount = n;
     }
   }
 
   if (errors.length > 0) return { errors, data: null };
 
   const note = typeof b.note === "string" && b.note.trim() !== "" ? b.note.trim() : null;
+  const fuelLocation =
+    typeof b.fuelLocation === "string" && b.fuelLocation.trim() !== ""
+      ? b.fuelLocation.trim()
+      : null;
 
   return {
     errors: [],

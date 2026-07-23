@@ -26,12 +26,13 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 車両の追加・編集・削除（GET以外）は、管理者パスワードでさらに保護する
-  // 車両一覧の取得（GET）は日報・月報画面でも使うため保護しない
-  const isVehicleWrite =
-    pathname.startsWith("/api/vehicles") && request.method !== "GET";
+  // 車両・所属の追加・編集・削除（GET以外）は、管理者パスワードでさらに保護する
+  // 一覧の取得（GET）は日報・月報画面でも使うため保護しない
+  const isAdminWrite =
+    (pathname.startsWith("/api/vehicles") || pathname.startsWith("/api/departments")) &&
+    request.method !== "GET";
 
-  if (isVehicleWrite) {
+  if (isAdminWrite) {
     const adminCookie = request.cookies.get(ADMIN_AUTH_COOKIE_NAME)?.value;
     const expectedAdmin = await hashText(getAdminPassword());
     if (adminCookie !== expectedAdmin) {

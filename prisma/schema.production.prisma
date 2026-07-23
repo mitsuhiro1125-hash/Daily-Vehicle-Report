@@ -16,31 +16,46 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Vehicle {
+model Department {
   id        Int      @id @default(autoincrement())
   name      String
-  number    String
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  logs VehicleLog[]
+  vehicles Vehicle[]
+
+  @@map("departments")
+}
+
+model Vehicle {
+  id           Int      @id @default(autoincrement())
+  name         String
+  number       String
+  departmentId Int?
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  logs       VehicleLog[]
 
   @@map("vehicles")
 }
 
 model VehicleLog {
-  id          Int      @id @default(autoincrement())
-  date        DateTime
-  vehicleId   Int
-  destination String
-  endMeter    Float
+  id           Int      @id @default(autoincrement())
+  date         DateTime
+  vehicleId    Int
+  destination  String
+  endMeter     Float
   fuelLocation String?
   fuelAmount   Float?
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 

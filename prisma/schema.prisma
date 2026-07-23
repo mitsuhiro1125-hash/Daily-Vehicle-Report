@@ -10,34 +10,50 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// 車両マスタ
-model Vehicle {
+// 所属マスタ（車両をグループ分けするためのカテゴリ）
+model Department {
   id        Int      @id @default(autoincrement())
-  name      String // 車両名（例：営業車1号）
-  number    String // 車両番号（ナンバープレート等）
+  name      String // 所属名（例：本社、〇〇営業所）
   sortOrder Int      @default(0) // 表示順
   isActive  Boolean  @default(true) // 使用中／使用停止
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  logs VehicleLog[]
+  vehicles Vehicle[]
+
+  @@map("departments")
+}
+
+// 車両マスタ
+model Vehicle {
+  id           Int      @id @default(autoincrement())
+  name         String // 車両名（例：営業車1号）
+  number       String // 車両番号（ナンバープレート等）
+  departmentId Int? // 所属（未設定＝未分類）
+  sortOrder    Int      @default(0) // 表示順
+  isActive     Boolean  @default(true) // 使用中／使用停止
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  logs       VehicleLog[]
 
   @@map("vehicles")
 }
 
 // 車両利用記録（日報 / 月報の元データ）
 model VehicleLog {
-  id          Int      @id @default(autoincrement())
-  date        DateTime // 利用日
-  vehicleId   Int
+  id           Int      @id @default(autoincrement())
+  date         DateTime // 利用日
+  vehicleId    Int
   // 訪問先は複数件を改行区切りの文字列として保存する（初期版はシンプルさを優先）
-  destination String
-  endMeter    Float // 終業時メーター（km）
+  destination  String
+  endMeter     Float // 終業時メーター（km）
   fuelLocation String? // 給油場所（任意）
-  fuelAmount   Float?  // 給油量（任意・リットル）
-  note        String? // 備考（任意）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  fuelAmount   Float? // 給油量（L・任意）
+  note         String? // 備考（任意）
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 

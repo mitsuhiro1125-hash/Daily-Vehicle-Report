@@ -156,7 +156,6 @@ export default function GeppoPage() {
   }
 
   // 車両ごとにグループ化し、さらに同じ日付の記録を1つにまとめる
-  // （同日に2回以上入力された場合、月報では1行にまとめて表示するため）
   const groups = useMemo(() => {
     const map = new Map<number, VehicleLogDTO[]>();
     for (const log of logs) {
@@ -184,6 +183,19 @@ export default function GeppoPage() {
       };
     });
   }, [logs]);
+
+  // 所属ごとにグループ化した車両一覧（絞り込みプルダウンのoptgroup表示用）
+  const groupedVehicleOptions = useMemo(() => {
+    const groupMap = new Map<string, { label: string; vehicles: VehicleDTO[] }>();
+    for (const v of vehicles) {
+      const key = v.department ? `dept-${v.department.id}` : "none";
+      const label = v.department ? v.department.name : "未分類";
+      const g = groupMap.get(key) ?? { label, vehicles: [] as VehicleDTO[] };
+      g.vehicles.push(v);
+      groupMap.set(key, g);
+    }
+    return Array.from(groupMap.values());
+  }, [vehicles]);
 
   function meterDiff(dayGroups: DayGroup[], index: number): string {
     if (index === 0) return "―";
@@ -264,7 +276,7 @@ export default function GeppoPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.errors) {
           const errs: Record<string, string> = {};
           for (const err of data.errors as { field: string; message: string }[]) {
@@ -352,10 +364,14 @@ export default function GeppoPage() {
             onChange={(e) => setVehicleFilter(e.target.value)}
           >
             <option value="">すべて</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
+            {groupedVehicleOptions.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

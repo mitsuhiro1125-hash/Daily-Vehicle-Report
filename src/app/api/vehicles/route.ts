@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
 
   const vehicles = await prisma.vehicle.findMany({
     where: includeInactive ? undefined : { isActive: true },
+    include: { department: true },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
 // POST /api/vehicles : 車両を新規登録
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, number, sortOrder, isActive } = body ?? {};
+  const { name, number, departmentId, sortOrder, isActive } = body ?? {};
 
   if (!name || typeof name !== "string" || name.trim() === "") {
     return NextResponse.json(
@@ -37,9 +38,14 @@ export async function POST(request: NextRequest) {
     data: {
       name: name.trim(),
       number: number.trim(),
+      departmentId:
+        typeof departmentId === "number" && Number.isInteger(departmentId)
+          ? departmentId
+          : null,
       sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
       isActive: typeof isActive === "boolean" ? isActive : true,
     },
+    include: { department: true },
   });
 
   return NextResponse.json(vehicle, { status: 201 });

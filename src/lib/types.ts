@@ -1,11 +1,20 @@
 // API・画面間でやり取りするデータの型定義
 
+export type DepartmentDTO = {
+  id: number;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
 export type VehicleDTO = {
   id: number;
   name: string;
   number: string;
+  departmentId: number | null;
   sortOrder: number;
   isActive: boolean;
+  department?: DepartmentDTO | null;
 };
 
 export type VehicleLogDTO = {

@@ -6,7 +6,7 @@ import { createSampleData } from "@/lib/seedData";
 // クラウド公開後、最初の1回だけブラウザで開いてサンプルデータを投入するための特別なAPI。
 // 安全のため、
 // ・環境変数 SEED_SECRET と一致するキーが指定されないと動かない
-// ・すでに車両か運転者のデータが1件でもあれば、何もせず終了する（誤操作でのデータ消失を防ぐ）
+// ・すでに車両が1件でもあれば、何もせず終了する（誤操作でのデータ消失を防ぐ）
 export async function GET(request: NextRequest) {
   const secret = process.env.SEED_SECRET;
   const key = request.nextUrl.searchParams.get("key");
