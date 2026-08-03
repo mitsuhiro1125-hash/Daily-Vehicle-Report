@@ -4,18 +4,21 @@ import { useEffect, useState, useCallback, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import { todayInputValue, joinDestinations } from "@/lib/utils";
-import type { VehicleDTO } from "@/lib/types";
+import type { VehicleDTO, DepartmentDTO } from "@/lib/types";
 
 type FormErrors = Partial<
   Record<"date" | "vehicleId" | "destination" | "endMeter" | "fuelAmount", string>
 >;
 
-// この端末（スマホ・パソコン）に、最後に選んだ車両を覚えておくためのキー
+// この端末（スマホ・パソコン）に、最後に選んだ車両・部署を覚えておくためのキー
 const LAST_VEHICLE_STORAGE_KEY = "vehicle-report:lastVehicleId";
+const LAST_DEPARTMENT_STORAGE_KEY = "vehicle-report:lastDepartmentId";
 
 export default function NippoPage() {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleDTO[]>([]);
+  const [departments, setDepartments] = useState<DepartmentDTO[]>([]);
+  const [departmentId, setDepartmentId] = useState<string>("");
   const [loadingMasters, setLoadingMasters] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -33,24 +36,51 @@ export default function NippoPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // 車両マスタを読み込み、この端末で前回選ばれていた車両があれば自動で選択する
+  // 車両・部署マスタを読み込み、この端末で前回選ばれていた部署・車両があれば自動で選択する
   useEffect(() => {
     async function load() {
       setLoadingMasters(true);
       setLoadError(null);
       try {
-        const res = await fetch("/api/vehicles");
-        if (!res.ok) throw new Error("failed to load vehicles");
-        const data: VehicleDTO[] = await res.json();
-        setVehicles(data);
+        const [vRes, dRes] = await Promise.all([
+          fetch("/api/vehicles"),
+          fetch("/api/departments"),
+        ]);
+        if (!vRes.ok || !dRes.ok) throw new Error("failed to load masters");
+        const [vData, dData]: [VehicleDTO[], DepartmentDTO[]] = await Promise.all([
+          vRes.json(),
+          dRes.json(),
+        ]);
+        setVehicles(vData);
+        setDepartments(dData);
 
-        const remembered = window.localStorage.getItem(LAST_VEHICLE_STORAGE_KEY);
-        if (remembered && data.some((v) => String(v.id) === remembered)) {
-          setVehicleId(remembered);
+        const rememberedDept = window.localStorage.getItem(LAST_DEPARTMENT_STORAGE_KEY);
+        let restoredDept = "";
+        if (
+          rememberedDept &&
+          (rememberedDept === "none" || dData.some((d) => String(d.id) === rememberedDept))
+        ) {
+          restoredDept = rememberedDept;
+          setDepartmentId(rememberedDept);
+        }
+
+        const rememberedVehicle = window.localStorage.getItem(LAST_VEHICLE_STORAGE_KEY);
+        if (rememberedVehicle) {
+          const v = vData.find((vv) => String(vv.id) === rememberedVehicle);
+          if (v) {
+            const matchesDept =
+              restoredDept === "" ||
+              (restoredDept === "none"
+                ? v.departmentId === null
+                : v.departmentId === Number(restoredDept));
+            if (matchesDept) {
+              setVehicleId(rememberedVehicle);
+            }
+          }
         }
       } catch {
         setLoadError(
-          "車両の一覧を読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
+          "車両・部署の一覧を読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
         );
       } finally {
         setLoadingMasters(false);
@@ -85,6 +115,25 @@ export default function NippoPage() {
     setVehicleId(newVehicleId);
     if (newVehicleId) {
       window.localStorage.setItem(LAST_VEHICLE_STORAGE_KEY, newVehicleId);
+    }
+  }
+
+  function handleDepartmentChange(newDepartmentId: string) {
+    setDepartmentId(newDepartmentId);
+    window.localStorage.setItem(LAST_DEPARTMENT_STORAGE_KEY, newDepartmentId);
+
+    // 選択中の車両が、新しく選んだ部署に属していなければ選択を解除する
+    if (vehicleId) {
+      const currentVehicle = vehicles.find((v) => String(v.id) === vehicleId);
+      const stillValid =
+        currentVehicle &&
+        (newDepartmentId === "" ||
+          (newDepartmentId === "none"
+            ? currentVehicle.departmentId === null
+            : currentVehicle.departmentId === Number(newDepartmentId)));
+      if (!stillValid) {
+        setVehicleId("");
+      }
     }
   }
 
@@ -198,10 +247,17 @@ export default function NippoPage() {
     !Number.isNaN(enteredMeterNum) &&
     enteredMeterNum < lastMeter;
 
-  // 所属ごとにグループ化した車両一覧（プルダウンのoptgroup表示用）
+  // 選択中の部署で絞り込んだ車両一覧
+  const filteredVehicles = vehicles.filter((v) => {
+    if (departmentId === "") return true;
+    if (departmentId === "none") return v.departmentId === null;
+    return v.departmentId === Number(departmentId);
+  });
+
+  // 所属ごとにグループ化した車両一覧（「すべて」選択時のプルダウンoptgroup表示用）
   const groupedVehicles = (() => {
     const groups = new Map<string, { label: string; vehicles: VehicleDTO[] }>();
-    for (const v of vehicles) {
+    for (const v of filteredVehicles) {
       const key = v.department ? `dept-${v.department.id}` : "none";
       const label = v.department ? v.department.name : "未分類";
       const g = groups.get(key) ?? { label, vehicles: [] as VehicleDTO[] };
@@ -257,6 +313,27 @@ export default function NippoPage() {
           {errors.date && <p className="text-red-600 font-bold mt-1">{errors.date}</p>}
         </div>
 
+        {/* 部署 */}
+        <div>
+          <label className="label-text">部署</label>
+          <select
+            className="input-field bg-white"
+            value={departmentId}
+            onChange={(e) => handleDepartmentChange(e.target.value)}
+          >
+            <option value="">すべて</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+            <option value="none">未分類</option>
+          </select>
+          <p className="text-sm text-gray-500 mt-1">
+            部署を選ぶと、下の車両の選択肢がその部署のものだけに絞り込まれます。
+          </p>
+        </div>
+
         {/* 車両 */}
         <div>
           <label className="label-text">車両</label>
@@ -266,15 +343,21 @@ export default function NippoPage() {
             onChange={(e) => handleVehicleChange(e.target.value)}
           >
             <option value="">選択してください</option>
-            {groupedVehicles.map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.vehicles.map((v) => (
+            {departmentId === ""
+              ? groupedVehicles.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))
+              : filteredVehicles.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
                   </option>
                 ))}
-              </optgroup>
-            ))}
           </select>
           {errors.vehicleId && (
             <p className="text-red-600 font-bold mt-1">{errors.vehicleId}</p>
