@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hashText, AUTH_COOKIE_NAME } from "@/lib/auth";
+import { hashText, AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from "@/lib/auth";
 
 // POST /api/login : 共有パスワードを照合し、正しければCookieを発行する
 export async function POST(request: NextRequest) {
   const appPassword = process.env.APP_PASSWORD;
 
-  // APP_PASSWORDが設定されていない場合（ローカル開発など）は保護なしとして扱う
   if (!appPassword) {
     return NextResponse.json({ ok: true });
   }
@@ -24,7 +23,7 @@ export async function POST(request: NextRequest) {
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30日間
+    maxAge: AUTH_COOKIE_MAX_AGE,
   });
   return res;
 }

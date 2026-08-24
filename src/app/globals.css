@@ -2,15 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body {
-  background-color: #f8fafc; /* 白〜薄いグレーの業務アプリらしい背景 */
+html, body {
+  background-color: #f8fafc;
   color: #1f2937;
 }
 
-/* スマホでの二重タップ拡大を防ぎつつ、押しやすいタップ領域を確保 */
-button,
-a {
+button, a {
   touch-action: manipulation;
 }
 

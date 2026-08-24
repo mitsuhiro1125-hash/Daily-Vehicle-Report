@@ -10,9 +10,45 @@ type FormErrors = Partial<
   Record<"date" | "vehicleId" | "destination" | "endMeter" | "fuelAmount", string>
 >;
 
-// この端末（スマホ・パソコン）に、最後に選んだ車両・部署を覚えておくためのキー
 const LAST_VEHICLE_STORAGE_KEY = "vehicle-report:lastVehicleId";
 const LAST_DEPARTMENT_STORAGE_KEY = "vehicle-report:lastDepartmentId";
+const MY_DESTINATIONS_KEY = "vehicle-report:myDestinations";
+const MY_FUEL_LOCATIONS_KEY = "vehicle-report:myFuelLocations";
+const MAX_FAVORITES = 12;
+
+function loadFavoriteList(key: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavoriteList(key: string, list: string[]) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    // 保存に失敗しても入力自体は継続できるよう、エラーは無視する
+  }
+}
+
+function addFavorite(key: string, value: string, current: string[]): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return current;
+  const withoutDup = current.filter((v) => v !== trimmed);
+  const next = [trimmed, ...withoutDup].slice(0, MAX_FAVORITES);
+  saveFavoriteList(key, next);
+  return next;
+}
+
+function removeFavorite(key: string, value: string, current: string[]): string[] {
+  const next = current.filter((v) => v !== value);
+  saveFavoriteList(key, next);
+  return next;
+}
 
 export default function NippoPage() {
   const router = useRouter();
@@ -30,22 +66,21 @@ export default function NippoPage() {
   const [fuelAmount, setFuelAmount] = useState("");
   const [note, setNote] = useState("");
 
+  const [myDestinations, setMyDestinations] = useState<string[]>([]);
+  const [myFuelLocations, setMyFuelLocations] = useState<string[]>([]);
+
   const [lastMeter, setLastMeter] = useState<number | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // 車両・部署マスタを読み込み、この端末で前回選ばれていた部署・車両があれば自動で選択する
   useEffect(() => {
     async function load() {
       setLoadingMasters(true);
       setLoadError(null);
       try {
-        const [vRes, dRes] = await Promise.all([
-          fetch("/api/vehicles"),
-          fetch("/api/departments"),
-        ]);
+        const [vRes, dRes] = await Promise.all([fetch("/api/vehicles"), fetch("/api/departments")]);
         if (!vRes.ok || !dRes.ok) throw new Error("failed to load masters");
         const [vData, dData]: [VehicleDTO[], DepartmentDTO[]] = await Promise.all([
           vRes.json(),
@@ -78,6 +113,9 @@ export default function NippoPage() {
             }
           }
         }
+
+        setMyDestinations(loadFavoriteList(MY_DESTINATIONS_KEY));
+        setMyFuelLocations(loadFavoriteList(MY_FUEL_LOCATIONS_KEY));
       } catch {
         setLoadError(
           "車両・部署の一覧を読み込めませんでした。電波・Wi-Fiの状態を確認して、もう一度お試しください。"
@@ -89,8 +127,6 @@ export default function NippoPage() {
     load();
   }, []);
 
-  // 選択中の車両が変わったら、前回の終業時メーターを取得して参考表示する
-  // （取得に失敗しても入力自体は継続できるよう、エラーは画面をブロックしない）
   const fetchLastMeter = useCallback(async (vId: string) => {
     if (!vId) {
       setLastMeter(null);
@@ -122,7 +158,6 @@ export default function NippoPage() {
     setDepartmentId(newDepartmentId);
     window.localStorage.setItem(LAST_DEPARTMENT_STORAGE_KEY, newDepartmentId);
 
-    // 選択中の車両が、新しく選んだ部署に属していなければ選択を解除する
     if (vehicleId) {
       const currentVehicle = vehicles.find((v) => String(v.id) === vehicleId);
       const stillValid =
@@ -149,6 +184,18 @@ export default function NippoPage() {
     setDestinations((prev) => prev.map((d, i) => (i === index ? value : d)));
   }
 
+  function handleSelectFavoriteDestination(value: string) {
+    setDestinations((prev) => {
+      const emptyIndex = prev.findIndex((d) => d.trim() === "");
+      if (emptyIndex !== -1) {
+        const next = [...prev];
+        next[emptyIndex] = value;
+        return next;
+      }
+      return [...prev, value];
+    });
+  }
+
   function clearForm() {
     setDate(todayInputValue());
     setVehicleId("");
@@ -173,16 +220,12 @@ export default function NippoPage() {
       newErrors.endMeter = "終業時メーターを入力してください";
     } else {
       const n = Number(endMeter);
-      if (Number.isNaN(n) || n < 0) {
-        newErrors.endMeter = "0以上の数値を入力してください";
-      }
+      if (Number.isNaN(n) || n < 0) newErrors.endMeter = "0以上の数値を入力してください";
     }
 
     if (fuelAmount !== "") {
       const n = Number(fuelAmount);
-      if (Number.isNaN(n) || n < 0) {
-        newErrors.fuelAmount = "0以上の数値を入力してください";
-      }
+      if (Number.isNaN(n) || n < 0) newErrors.fuelAmount = "0以上の数値を入力してください";
     }
 
     setErrors(newErrors);
@@ -192,7 +235,6 @@ export default function NippoPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-
     if (!validate()) return;
 
     setSubmitting(true);
@@ -227,8 +269,6 @@ export default function NippoPage() {
       }
 
       const data = await res.json();
-
-      // 登録が完了したらTOP画面に戻り、そこで完了メッセージを表示する
       const params = new URLSearchParams({ registered: "1" });
       if (data.warning) params.set("warning", data.warning);
       router.push(`/?${params.toString()}`);
@@ -247,14 +287,12 @@ export default function NippoPage() {
     !Number.isNaN(enteredMeterNum) &&
     enteredMeterNum < lastMeter;
 
-  // 選択中の部署で絞り込んだ車両一覧
   const filteredVehicles = vehicles.filter((v) => {
     if (departmentId === "") return true;
     if (departmentId === "none") return v.departmentId === null;
     return v.departmentId === Number(departmentId);
   });
 
-  // 所属ごとにグループ化した車両一覧（「すべて」選択時のプルダウンoptgroup表示用）
   const groupedVehicles = (() => {
     const groups = new Map<string, { label: string; vehicles: VehicleDTO[] }>();
     for (const v of filteredVehicles) {
@@ -301,7 +339,6 @@ export default function NippoPage() {
       )}
 
       <form onSubmit={handleSubmit} className="card flex flex-col gap-6">
-        {/* 日付 */}
         <div>
           <label className="label-text">日付</label>
           <input
@@ -313,7 +350,6 @@ export default function NippoPage() {
           {errors.date && <p className="text-red-600 font-bold mt-1">{errors.date}</p>}
         </div>
 
-        {/* 部署 */}
         <div>
           <label className="label-text">部署</label>
           <select
@@ -334,7 +370,6 @@ export default function NippoPage() {
           </p>
         </div>
 
-        {/* 車両 */}
         <div>
           <label className="label-text">車両</label>
           <select
@@ -359,12 +394,9 @@ export default function NippoPage() {
                   </option>
                 ))}
           </select>
-          {errors.vehicleId && (
-            <p className="text-red-600 font-bold mt-1">{errors.vehicleId}</p>
-          )}
+          {errors.vehicleId && <p className="text-red-600 font-bold mt-1">{errors.vehicleId}</p>}
         </div>
 
-        {/* 訪問先 */}
         <div>
           <label className="label-text">訪問先</label>
           <div className="flex flex-col gap-3">
@@ -377,6 +409,15 @@ export default function NippoPage() {
                   value={d}
                   onChange={(e) => updateDestinationField(i, e.target.value)}
                 />
+                <button
+                  type="button"
+                  onClick={() => setMyDestinations(addFavorite(MY_DESTINATIONS_KEY, d, myDestinations))}
+                  disabled={!d.trim() || myDestinations.includes(d.trim())}
+                  className="btn-small border-amber-400 text-amber-600 shrink-0 disabled:opacity-30"
+                  aria-label="この訪問先をマイリストに保存"
+                >
+                  ☆保存
+                </button>
                 {destinations.length > 1 && (
                   <button
                     type="button"
@@ -400,9 +441,40 @@ export default function NippoPage() {
           {errors.destination && (
             <p className="text-red-600 font-bold mt-1">{errors.destination}</p>
           )}
+
+          {myDestinations.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-bold text-gray-500 mb-2">よく行く訪問先</p>
+              <div className="flex flex-wrap gap-2">
+                {myDestinations.map((fav) => (
+                  <div
+                    key={fav}
+                    className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-full pl-3 pr-1 py-1"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSelectFavoriteDestination(fav)}
+                      className="text-sm text-amber-800 font-bold"
+                    >
+                      {fav}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMyDestinations(removeFavorite(MY_DESTINATIONS_KEY, fav, myDestinations))
+                      }
+                      className="text-gray-400 text-xs px-2 py-1"
+                      aria-label="マイリストから削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 終業時メーター */}
         <div>
           <label className="label-text">終業時メーター（km）</label>
           <input
@@ -424,24 +496,65 @@ export default function NippoPage() {
               ⚠ 前回より小さい値です。ご確認のうえ登録してください。
             </p>
           )}
-          {errors.endMeter && (
-            <p className="text-red-600 font-bold mt-1">{errors.endMeter}</p>
+          {errors.endMeter && <p className="text-red-600 font-bold mt-1">{errors.endMeter}</p>}
+        </div>
+
+        <div>
+          <label className="label-text">給油場所（任意）</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例：ENEOS 目黒店"
+              value={fuelLocation}
+              onChange={(e) => setFuelLocation(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() =>
+                setMyFuelLocations(addFavorite(MY_FUEL_LOCATIONS_KEY, fuelLocation, myFuelLocations))
+              }
+              disabled={!fuelLocation.trim() || myFuelLocations.includes(fuelLocation.trim())}
+              className="btn-small border-amber-400 text-amber-600 shrink-0 disabled:opacity-30"
+              aria-label="この給油場所をマイリストに保存"
+            >
+              ☆保存
+            </button>
+          </div>
+
+          {myFuelLocations.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-bold text-gray-500 mb-2">よく使う給油先</p>
+              <div className="flex flex-wrap gap-2">
+                {myFuelLocations.map((fav) => (
+                  <div
+                    key={fav}
+                    className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-full pl-3 pr-1 py-1"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setFuelLocation(fav)}
+                      className="text-sm text-amber-800 font-bold"
+                    >
+                      {fav}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMyFuelLocations(removeFavorite(MY_FUEL_LOCATIONS_KEY, fav, myFuelLocations))
+                      }
+                      className="text-gray-400 text-xs px-2 py-1"
+                      aria-label="マイリストから削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* 給油場所 */}
-        <div>
-          <label className="label-text">給油場所（任意）</label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="例：ENEOS 目黒店"
-            value={fuelLocation}
-            onChange={(e) => setFuelLocation(e.target.value)}
-          />
-        </div>
-
-        {/* 給油量 */}
         <div>
           <label className="label-text">給油量（L・任意）</label>
           <input
@@ -459,7 +572,6 @@ export default function NippoPage() {
           )}
         </div>
 
-        {/* 備考 */}
         <div>
           <label className="label-text">備考（任意）</label>
           <p className="text-sm text-gray-500 mb-2">
@@ -475,7 +587,6 @@ export default function NippoPage() {
           />
         </div>
 
-        {/* 操作ボタン */}
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button type="submit" disabled={submitting} className="btn-primary flex-1">
             {submitting ? "登録中..." : "登録する"}
@@ -490,13 +601,10 @@ export default function NippoPage() {
         </div>
       </form>
 
-      {/* クリア確認ダイアログ */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center px-6 z-50">
           <div className="card max-w-sm w-full">
-            <p className="text-lg font-bold text-gray-800 mb-2">
-              入力中の内容をクリアしますか？
-            </p>
+            <p className="text-lg font-bold text-gray-800 mb-2">入力中の内容をクリアしますか？</p>
             <p className="text-gray-500 mb-4">この操作は取り消せません。</p>
             <div className="flex gap-3">
               <button
@@ -508,10 +616,7 @@ export default function NippoPage() {
               >
                 クリアする
               </button>
-              <button
-                onClick={() => setShowClearConfirm(false)}
-                className="btn-secondary flex-1"
-              >
+              <button onClick={() => setShowClearConfirm(false)} className="btn-secondary flex-1">
                 キャンセル
               </button>
             </div>

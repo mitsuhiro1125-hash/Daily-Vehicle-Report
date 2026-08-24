@@ -3,8 +3,6 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-// 共有パスワードを入力してもらうログイン画面
-// APP_PASSWORD が設定されている環境（クラウド公開時など）でのみ表示される
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState("");
@@ -43,13 +41,11 @@ export default function LoginPage() {
           <h1 className="text-xl font-bold text-gray-800 mb-1">車両月報作成アプリ</h1>
           <p className="text-gray-500 text-sm">パスワードを入力してください</p>
         </div>
-
         {error && (
           <p className="text-red-600 font-bold bg-red-50 border-2 border-red-300 rounded-lg px-4 py-2">
             {error}
           </p>
         )}
-
         <div>
           <input
             type="password"
@@ -60,7 +56,6 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
-
         <button type="submit" disabled={submitting} className="btn-primary">
           {submitting ? "確認中..." : "入る"}
         </button>

@@ -13,8 +13,12 @@ export async function hashText(text: string): Promise<string> {
 export const AUTH_COOKIE_NAME = "vr_auth";
 
 // 車両管理（管理者用機能）専用の合言葉
-// 環境変数 ADMIN_PASSWORD が設定されていればそちらを使い、なければ既定値を使う
 export const ADMIN_AUTH_COOKIE_NAME = "vr_admin_auth";
 export function getAdminPassword(): string {
   return process.env.ADMIN_PASSWORD || "mIck3216";
 }
+
+// ログイン状態を保持する期間（秒）
+// iPhoneのホーム画面アプリは、一定期間開かないとブラウザ側の保存領域が
+// 消えることがあるため、Cookie自体の有効期限はできるだけ長く設定しておく。
+export const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 365日

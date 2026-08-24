@@ -1,5 +1,3 @@
-// API・画面間でやり取りするデータの型定義
-
 export type DepartmentDTO = {
   id: number;
   name: string;
@@ -19,9 +17,9 @@ export type VehicleDTO = {
 
 export type VehicleLogDTO = {
   id: number;
-  date: string; // "YYYY-MM-DD"
+  date: string;
   vehicleId: number;
-  destination: string; // 改行区切り
+  destination: string;
   endMeter: number;
   fuelLocation: string | null;
   fuelAmount: number | null;

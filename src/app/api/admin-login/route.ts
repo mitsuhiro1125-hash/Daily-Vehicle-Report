@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hashText, ADMIN_AUTH_COOKIE_NAME, getAdminPassword } from "@/lib/auth";
+import {
+  hashText,
+  ADMIN_AUTH_COOKIE_NAME,
+  getAdminPassword,
+  AUTH_COOKIE_MAX_AGE,
+} from "@/lib/auth";
 
 // GET /api/admin-login : 現在、管理者としてログイン済みかどうかを確認する
 export async function GET(request: NextRequest) {
@@ -24,7 +29,7 @@ export async function POST(request: NextRequest) {
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30日間
+    maxAge: AUTH_COOKIE_MAX_AGE,
   });
   return res;
 }

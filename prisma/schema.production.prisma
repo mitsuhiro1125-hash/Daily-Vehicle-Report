@@ -1,12 +1,3 @@
-// 本番環境（Vercelへのデプロイ）専用の Prisma スキーマ
-//
-// ローカル開発（自分のパソコンの中）では prisma/schema.prisma（SQLite）を使い、
-// クラウド公開（Vercel）ではこちらの schema.production.prisma（PostgreSQL）を使います。
-// モデル定義（テーブルの内容）は必ず両方のファイルで一致させてください。
-//
-// Vercelの「Storage」タブから「Prisma Postgres」を接続すると、
-// DATABASE_URL が自動的に設定されます（手入力は不要です）。
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

@@ -6,8 +6,6 @@ import {
   getAdminPassword,
 } from "@/lib/auth";
 
-// すべてのページ・APIアクセスの前に実行され、パスワード保護を行う。
-// APP_PASSWORD が設定されていない環境（ローカル開発など）では、全体の保護は何もしない。
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -17,7 +15,6 @@ export async function middleware(request: NextRequest) {
     const expected = await hashText(appPassword);
 
     if (cookie !== expected) {
-      // APIアクセスの場合はログイン画面へのリダイレクトではなく401を返す
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
       }
@@ -26,8 +23,6 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 車両・所属の追加・編集・削除（GET以外）は、管理者パスワードでさらに保護する
-  // 一覧の取得（GET）は日報・月報画面でも使うため保護しない
   const isAdminWrite =
     (pathname.startsWith("/api/vehicles") || pathname.startsWith("/api/departments")) &&
     request.method !== "GET";
@@ -36,10 +31,7 @@ export async function middleware(request: NextRequest) {
     const adminCookie = request.cookies.get(ADMIN_AUTH_COOKIE_NAME)?.value;
     const expectedAdmin = await hashText(getAdminPassword());
     if (adminCookie !== expectedAdmin) {
-      return NextResponse.json(
-        { error: "管理者パスワードによる認証が必要です" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "管理者パスワードによる認証が必要です" }, { status: 401 });
     }
   }
 
